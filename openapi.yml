@@ -1,0 +1,333 @@
+openapi: 3.0.0
+info:
+  title: API de Proteção de Dados Pessoais (LGPD)
+  description: |
+    API REST para detecção e anonimização de PII (Personal Identifiable Information)
+    em conformidade com a LGPD (Lei Geral de Proteção de Dados).
+    
+    ## Funcionalidades
+    - Detecção automática de 11 tipos de PII
+    - Anonimização inteligente de dados sensíveis
+    - Geração de relatórios detalhados com UUID único
+    - Rastreabilidade completa de processamentos
+    - Análise de risco LGPD
+    
+  version: 1.0.0
+  contact:
+    name: Sistema LGPD
+    email: suporte@exemplo.com
+
+servers:
+  - url: http://localhost:5000
+    description: Servidor de Desenvolvimento
+
+tags:
+  - name: Health
+    description: Verificação de status da API
+  - name: Upload
+    description: Upload e processamento de arquivos
+  - name: Reports
+    description: Consulta de relatórios
+  - name: Records
+    description: Consulta de registros processados
+
+paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Verificar status da API
+      description: Retorna o status da API e suas dependências
+      responses:
+        '200':
+          description: API está operacional
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  timestamp:
+                    type: string
+                    format: date-time
+                  services:
+                    type: object
+                    properties:
+                      api:
+                        type: string
+                        example: operational
+                      mongodb:
+                        type: string
+                        example: connected
+                      pii_detector:
+                        type: string
+                        example: loaded
+
+  /api/v1/upload:
+    post:
+      tags:
+        - Upload
+      summary: Upload de arquivo para processamento
+      description: |
+        Faz upload de arquivo CSV ou TXT para detecção e anonimização de PII.
+        
+        **Formatos aceitos:**
+        - CSV: Detecta automaticamente a coluna de texto
+        - TXT: Processa cada linha como um registro
+        
+        **Tamanho máximo:** 50MB
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Arquivo CSV ou TXT
+      responses:
+        '200':
+          description: Arquivo processado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadResponse'
+        '400':
+          description: Erro de validação
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Erro interno do servidor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/reports:
+    get:
+      tags:
+        - Reports
+      summary: Listar relatórios
+      description: Retorna lista paginada de relatórios de processamento
+      parameters:
+        - name: limit
+          in: query
+          description: Número máximo de resultados
+          schema:
+            type: integer
+            default: 50
+            maximum: 200
+        - name: skip
+          in: query
+          description: Número de registros a pular (paginação)
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Lista de relatórios
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportsListResponse'
+
+  /api/v1/reports/{process_uuid}:
+    get:
+      tags:
+        - Reports
+      summary: Obter relatório específico
+      description: Retorna relatório detalhado de um processamento
+      parameters:
+        - name: process_uuid
+          in: path
+          required: true
+          description: UUID do processamento
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Relatório encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportDetailResponse'
+        '404':
+          description: Relatório não encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/records/{process_uuid}:
+    get:
+      tags:
+        - Records
+      summary: Obter registros por UUID
+      description: Retorna registros processados de um processamento específico
+      parameters:
+        - name: process_uuid
+          in: path
+          required: true
+          description: UUID do processamento
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          description: Número máximo de resultados
+          schema:
+            type: integer
+            default: 100
+        - name: skip
+          in: query
+          description: Número de registros a pular
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Lista de registros
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecordsListResponse'
+
+components:
+  schemas:
+    UploadResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: Arquivo processado com sucesso
+        data:
+          type: object
+          properties:
+            process_uuid:
+              type: string
+              format: uuid
+            filename:
+              type: string
+            total_records:
+              type: integer
+            records_anonymized:
+              type: integer
+            pii_detected:
+              type: object
+              additionalProperties:
+                type: integer
+            processing_time_seconds:
+              type: number
+
+    ReportsListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            reports:
+              type: array
+              items:
+                $ref: '#/components/schemas/Report'
+            total:
+              type: integer
+            limit:
+              type: integer
+            skip:
+              type: integer
+
+    ReportDetailResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/Report'
+
+    Report:
+      type: object
+      properties:
+        process_uuid:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        file_info:
+          type: object
+        processing_stats:
+          type: object
+        pii_breakdown:
+          type: array
+          items:
+            type: object
+        risk_assessment:
+          type: object
+        lgpd_compliance:
+          type: object
+
+    RecordsListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            records:
+              type: array
+              items:
+                $ref: '#/components/schemas/Record'
+            total:
+              type: integer
+            limit:
+              type: integer
+            skip:
+              type: integer
+
+    Record:
+      type: object
+      properties:
+        process_uuid:
+          type: string
+          format: uuid
+        record_id:
+          type: string
+        mask_text:
+          type: string
+          description: Texto original (pode conter PII mascarado)
+        text_formatted:
+          type: string
+          description: Texto anonimizado
+        pii_detected:
+          type: object
+          additionalProperties:
+            type: integer
+        has_pii:
+          type: boolean
+        processed_at:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+        message:
+          type: string

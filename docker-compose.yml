@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  # MongoDB Database
+  mongodb:
+    image: mongo:7.0
+    container_name: lgpd_mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_DATABASE=lgpd_database
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - lgpd_network
+
+  # API Flask
+  api:
+    build: .
+    container_name: lgpd_api
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - MONGO_URI=mongodb://mongodb:27017/
+      - DB_NAME=lgpd_database
+    volumes:
+      - ./uploads:/app/uploads
+      - .:/app
+    depends_on:
+      - mongodb
+    networks:
+      - lgpd_network
+    command: python app.py
+
+volumes:
+  mongodb_data:
+    driver: local
+
+networks:
+  lgpd_network:
+    driver: bridge

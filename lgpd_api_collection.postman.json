@@ -1,0 +1,386 @@
+{
+	"info": {
+		"_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+		"name": "API Proteção de Dados LGPD",
+		"description": "Coleção completa de endpoints para detecção e anonimização de PII (Personal Identifiable Information)\n\nVersão: 1.0.0\nAutor: Sistema de Proteção LGPD",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Health Check",
+			"item": [
+				{
+					"name": "Verificar Status da API",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/health",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"health"
+							]
+						},
+						"description": "Verifica o status da API e suas dependências (MongoDB, PII Detector)"
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoint para verificação de saúde da API"
+		},
+		{
+			"name": "Upload e Processamento",
+			"item": [
+				{
+					"name": "Upload de Arquivo CSV",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": [],
+									"description": "Arquivo CSV contendo dados a serem anonimizados"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/upload",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"upload"
+							]
+						},
+						"description": "Faz upload de um arquivo CSV para detecção e anonimização de PII"
+					},
+					"response": []
+				},
+				{
+					"name": "Upload de Arquivo TXT",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": [],
+									"description": "Arquivo TXT contendo dados a serem anonimizados"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/upload",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"upload"
+							]
+						},
+						"description": "Faz upload de um arquivo TXT para detecção e anonimização de PII"
+					},
+					"response": []
+				},
+				{
+					"name": "Upload de Arquivo Excel",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": [],
+									"description": "Arquivo Excel (.xlsx ou .xls) contendo dados a serem anonimizados"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/upload",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"upload"
+							]
+						},
+						"description": "Faz upload de um arquivo Excel para detecção e anonimização de PII"
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints para upload e processamento de arquivos"
+		},
+		{
+			"name": "Relatórios",
+			"item": [
+				{
+					"name": "Listar Todos os Relatórios",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/reports?limit=50&skip=0",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"reports"
+							],
+							"query": [
+								{
+									"key": "limit",
+									"value": "50",
+									"description": "Número máximo de relatórios a retornar"
+								},
+								{
+									"key": "skip",
+									"value": "0",
+									"description": "Número de relatórios a pular (paginação)"
+								}
+							]
+						},
+						"description": "Lista todos os relatórios de processamento com paginação"
+					},
+					"response": []
+				},
+				{
+					"name": "Obter Relatório por UUID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/reports/:process_uuid",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"reports",
+								":process_uuid"
+							],
+							"variable": [
+								{
+									"key": "process_uuid",
+									"value": "{{process_uuid}}",
+									"description": "UUID do processamento"
+								}
+							]
+						},
+						"description": "Obtém um relatório específico usando o UUID do processamento"
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints para consulta de relatórios de processamento"
+		},
+		{
+			"name": "Registros Processados",
+			"item": [
+				{
+					"name": "Obter Registros por UUID de Processo",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/records/:process_uuid?limit=100&skip=0",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"records",
+								":process_uuid"
+							],
+							"query": [
+								{
+									"key": "limit",
+									"value": "100",
+									"description": "Número máximo de registros a retornar"
+								},
+								{
+									"key": "skip",
+									"value": "0",
+									"description": "Número de registros a pular (paginação)"
+								}
+							],
+							"variable": [
+								{
+									"key": "process_uuid",
+									"value": "{{process_uuid}}",
+									"description": "UUID do processamento"
+								}
+							]
+						},
+						"description": "Obtém todos os registros anonimizados de um processamento específico"
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints para consulta de registros processados"
+		},
+		{
+			"name": "Requisições Anonimizadas",
+			"item": [
+				{
+					"name": "Listar Todas as Requisições",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/requests?limit=100&skip=0&sort=id&order=asc",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"requests"
+							],
+							"query": [
+								{
+									"key": "limit",
+									"value": "100",
+									"description": "Número máximo de requisições a retornar"
+								},
+								{
+									"key": "skip",
+									"value": "0",
+									"description": "Número de requisições a pular (paginação)"
+								},
+								{
+									"key": "sort",
+									"value": "id",
+									"description": "Campo para ordenação (ex: id, proccess_date)"
+								},
+								{
+									"key": "order",
+									"value": "asc",
+									"description": "Ordem: asc ou desc"
+								}
+							]
+						},
+						"description": "Obtém todas as requisições anonimizadas com paginação e ordenação"
+					},
+					"response": []
+				},
+				{
+					"name": "Obter Requisição por ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/requests/:request_id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"requests",
+								":request_id"
+							],
+							"variable": [
+								{
+									"key": "request_id",
+									"value": "1",
+									"description": "ID numérico da requisição"
+								}
+							]
+						},
+						"description": "Obtém uma requisição específica por seu ID numérico"
+					},
+					"response": []
+				},
+				{
+					"name": "Buscar Requisições por Texto",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/requests/search?q=texto_busca&limit=50",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"requests",
+								"search"
+							],
+							"query": [
+								{
+									"key": "q",
+									"value": "texto_busca",
+									"description": "Texto para buscar no campo text_formatted"
+								},
+								{
+									"key": "limit",
+									"value": "50",
+									"description": "Número máximo de resultados"
+								}
+							]
+						},
+						"description": "Busca requisições que contenham o texto especificado no campo text_formatted"
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints para consulta de requisições anonimizadas (access_info)"
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:5000",
+			"type": "string"
+		},
+		{
+			"key": "process_uuid",
+			"value": "",
+			"type": "string"
+		}
+	]
+}
