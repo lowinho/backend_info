@@ -1,6 +1,8 @@
 """
-Processador Standalone de PII - V8.0 (Regex Blindado + Google Phonenumbers)
-Correção: Impede que números de processos (iniciados em 0) sejam confundidos com telefones.
+Processador Standalone de PII - V9.0 (Telefones Blindados + Registros Gerais)
+Melhorias:
+- Regex de telefone estrito para evitar confusão com processos.
+- Nova categoria 'Registros Gerais' (RG, NIS, PIS, CNH, etc).
 """
 import pandas as pd
 import spacy
@@ -28,18 +30,17 @@ class Colors:
 
 class PIIDetector:
     """
-    Detector de PII V8.0 - Foco em eliminação de Falsos Positivos em Telefones
+    Detector de PII V9.0
     """
     
     PII_TYPES = {
         'PERSON_NAME': 'Nome de Pessoa',
         'CPF': 'Cadastro de Pessoa Física',
-        'RG': 'Registro Geral',
         'CNPJ': 'Cadastro Nacional de Pessoa Jurídica',
         'EMAIL': 'Endereço de E-mail',
         'PHONE': 'Número de Telefone',
         'FULL_ADDRESS': 'Endereço Completo',
-        'DOC_GENERICO': 'Documento Genérico',
+        'GENERAL_REGISTRY': 'Registros Gerais (RG/NIS/PIS/CNH)', # Nova Categoria
         'SENSITIVE_HEALTH': 'Dados de Saúde (Sensível)',
         'SENSITIVE_MINOR': 'Dados de Menor de Idade (Sensível)',
         'SENSITIVE_SOCIAL': 'Dados Sociais (Sensível)',
@@ -78,7 +79,7 @@ class PIIDetector:
     }
 
     def __init__(self):
-        print("📦 Carregando recursos de IA (PIIDetector V8.0)...", end='\r')
+        print("📦 Carregando recursos de IA (PIIDetector V9.0)...", end='\r')
         try:
             self.nlp = spacy.load("pt_core_news_lg")
             pipes_to_disable = ['parser', 'tagger', 'morphologizer', 'lemmatizer']
@@ -89,19 +90,24 @@ class PIIDetector:
             print(f"{Colors.FAIL}Erro: Modelo 'pt_core_news_lg' não encontrado.{Colors.ENDC}")
             self.nlp = None
 
-        # --- REGEX OTIMIZADO PARA VALIDAR TELEFONES REAIS ---
+        # --- REGEX OTIMIZADO (Blindado contra Processos) ---
         self.phone_patterns = [
             # 1. Formatado (Ex: (61) 91234-5678)
-            r'\b(?:\(?[1-9]{2}\)?\s?)(?:9\s?\d|[2-5]\d)\d{2}[-.\s]\d{4}\b(?!/\d{4}-\d{2})',
-
+            # Regra: DDD deve ser [1-9]{2}. O primeiro dígito do número deve ser 9 (celular) ou 2-5 (fixo).
+            # Isso elimina "01235" (começa com 0) e números aleatórios.
+            r'\b(?:\(?[1-9]{2}\)?\s?)(?:9\s?\d|[2-5]\d)\d{2}[-.\s]\d{4}\b',
+            
             # 2. Celular Solto (Ex: 61988887777)
-            r'\b[1-9]{2}9\d{8}\b(?!/\d{4}-\d{2})',
-
+            # Regra: DDD[1-9]{2} + 9 + 8 dígitos. Total 11 dígitos exatos.
+            r'\b[1-9]{2}9\d{8}\b',
+            
             # 3. Fixo Solto (Ex: 1133334444)
-            r'\b[1-9]{2}[2-5]\d{7}\b(?!/\d{4}-\d{2})',
+            # Regra: DDD[1-9]{2} + [2-5] + 7 dígitos. Total 10 dígitos exatos.
+            r'\b[1-9]{2}[2-5]\d{7}\b',
 
-            # 4. Contexto Explícito (Backup – restringido)
-            r'(?i)(?:\b(?:tel|cel|zap|whatsapp|contato|fone)\b)[:\s\-]+(?:\(?[1-9]{2}\)?\s?)?(?:9\d{4}|\d{4})[-.\s]?\d{4}\b(?!/\d{4}-\d{2})'
+            # 4. Contexto Explícito (Backup)
+            # Só aceita formato livre se tiver a palavra mágica antes
+            r'(?i)(?:tel|cel|zap|whatsapp|contato|fone)[:\s\.]+\d{8,12}\b'
         ]
 
         self.regex_patterns = {
@@ -109,15 +115,20 @@ class PIIDetector:
             'CNPJ': r'\b\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}\b',
             'EMAIL': r'\b[A-Za-z0-9._%+-]+@(?!.*\.gov\.br)[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
             'FULL_ADDRESS': r'(?i)\b(?:Rua|Av\.|Avenida|Q\.|Qd\.|Quadra|SQN|SQS|SHN|SHS|CLN|CRN|SRES|SHDF|Cond\.|Bloco|Bl\.|Lote|Lt\.|Conjunto|Conj\.)\s+[A-Za-z0-9\s,.-]{1,100}(?:(?:\b\d+|[A-Z]\b))',
-            'DOC_GENERICO': r'(?i)(?:OAB|CNH|Matr[íi]cula|NIS|PIS)[:\s\.]+\d{3,15}',
-            'RG': r'(?i)(?:RG|Identidade)[:\s\.]+\d{1,10}'
+            
+            # REGISTROS GERAIS (Unificado)
+            # Captura: RG, CNH, NIS, PIS, PASEP, Título de Eleitor, CTPS
+            # Padrões:
+            # - Contexto explícito (RG: 1234)
+            # - Formato NIS/PIS (000.00000.00-0)
+            'GENERAL_REGISTRY': r'(?i)(?:RG|CNH|Matr[íi]cula|NIS|PIS|PASEP|NIT|CTPS|T[íi]tulo\s(?:de\s)?Eleitor)[:\s\.]+\d{1,15}[-\d]*|\b\d{3}\.\d{5}\.\d{2}-\d\b'
         }
 
         self.sensitive_keywords = {
             'SENSITIVE_HEALTH': [r'\bc[âa]ncer\b', r'\boncologia\b', r'\bhiv\b', r'\baids\b', r'\basm[áa]tico\b', r'\bminha doen[çc]a\b', r'\blaudo m[ée]dico\b', r'\bCID\s?[A-Z]\d', r'\btranstorno\b', r'\bdepress[ãa]o\b', r'\bdefici[êe]ncia\b', r'\bautis'],
             'SENSITIVE_MINOR': [r'\bmenor de idade\b', r'\bcrian[çc]a\b', r'\bfilh[ao] (?:de )?menor\b', r'\btutela\b', r'\bcreche\b', r'\balun[ao]\b'],
             'SENSITIVE_SOCIAL': [r'\bvulnerabilidade\b', r'\baux[íi]lio emergencial\b', r'\bcesta b[áa]sica\b', r'\bbolsa fam[íi]lia\b'],
-            'SENSITIVE_RACE': [r'\bcor d[ae] pele\b', r'\braça\b', r'\betnia\b', r'\bnegro\b', r'\bpardo\b'], # Ajustado para "de/da"
+            'SENSITIVE_RACE': [r'\bcor d[ae] pele\b', r'\braça\b', r'\betnia\b', r'\bnegro\b', r'\bpardo\b'],
             'SENSITIVE_GENDER': [r'\btrans\b', r'\bhormoniza[çc][ãa]o\b', r'\bidentidade de g[êe]nero\b']
         }
 
@@ -134,7 +145,7 @@ class PIIDetector:
                 indices_to_mask.update(range(match.start(), match.end()))
                 pii_stats[pii_type] += 1
 
-        # 2. Telefones (Prioridade: Regex Estrito > Lib Google)
+        # 2. Telefones (Regex Estrito + Google Lib)
         for pattern in self.phone_patterns:
             for match in re.finditer(pattern, text):
                 match_range = set(range(match.start(), match.end()))
@@ -142,13 +153,12 @@ class PIIDetector:
                     indices_to_mask.update(match_range)
                     pii_stats['PHONE'] += 1
         
-        # Backup: Lib Google (apenas se passar na validação estrita da lib)
+        # Backup com Phonenumbers
         try:
             for match in phonenumbers.PhoneNumberMatcher(text, "BR"):
-                # Validação extra: a lib as vezes pega datas como telefones. 
-                # Se o número não for válido para a região, ignoramos.
                 if phonenumbers.is_valid_number(match.number):
                     match_range = set(range(match.start, match.end))
+                    # Validação extra: Se o regex estrito já pegou, ignoramos para não duplicar
                     if not match_range.intersection(indices_to_mask):
                         indices_to_mask.update(match_range)
                         pii_stats['PHONE'] += 1
@@ -215,7 +225,7 @@ class DashboardGenerator:
         
         sensitive_keys = ['SENSITIVE_HEALTH', 'SENSITIVE_MINOR', 'SENSITIVE_SOCIAL', 'SENSITIVE_RACE', 'SENSITIVE_GENDER']
         has_sensitive = any(k in pii_stats_total for k in sensitive_keys)
-        has_mass_ids = sum(pii_stats_total.get(k, 0) for k in ['CPF', 'CNPJ']) > (total_records * 0.1)
+        has_mass_ids = sum(pii_stats_total.get(k, 0) for k in ['CPF', 'CNPJ', 'GENERAL_REGISTRY']) > (total_records * 0.1)
         
         if has_sensitive or has_mass_ids:
             risk_color = Colors.FAIL
@@ -261,7 +271,7 @@ class DashboardGenerator:
             total_count = sum(item['qtd'] for item in occurrences)
             desc = detector.get_description(pii_type)
             
-            color_badge = Colors.FAIL if "Sensível" in desc or pii_type in ['CPF', 'CNPJ'] else Colors.WARNING
+            color_badge = Colors.FAIL if "Sensível" in desc or pii_type in ['CPF', 'CNPJ', 'GENERAL_REGISTRY'] else Colors.WARNING
             print(f"{color_badge}[{desc}: {total_count} ocorrências]{Colors.ENDC}")
             
             ids_str_list = [f"ID {item['id']} (Qtd: {item['qtd']})" for item in occurrences]
