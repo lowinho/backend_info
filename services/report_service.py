@@ -14,7 +14,7 @@ class ReportService:
         processing_time: float
     ) -> Dict:
         """
-        Cria relatório completo de processamento (Standard Output)
+        Cria relatório completo de processamento
         """
         
         # Calcular totais
@@ -23,7 +23,6 @@ class ReportService:
         
         # Criar detalhamento por tipo de PII
         pii_breakdown = []
-        # Ordena do maior para o menor para ficar bonito no JSON
         for pii_type, count in sorted(pii_statistics.items(), key=lambda x: x[1], reverse=True):
             pii_breakdown.append({
                 'type': pii_type,
@@ -35,7 +34,6 @@ class ReportService:
         # Classificação de risco
         risk_level = ReportService._calculate_risk_level(pii_statistics, total_records)
         
-        # Montar relatório mantendo estrutura original
         report = {
             'process_uuid': process_uuid,
             'created_at': datetime.now().isoformat(),
@@ -71,35 +69,36 @@ class ReportService:
     
     @staticmethod
     def _get_pii_description(pii_type: str) -> str:
-        """Retorna descrição em português, sincronizada com o PIIDetector"""
+        """
+        Retorna descrição em português.
+        Atualizado para refletir as novas chaves do PIIDetector.
+        """
         descriptions = {
-            # --- Identificadores Pessoais ---
+            # --- Identificadores ---
             'CPF': 'Cadastro de Pessoa Física',
             'CNPJ': 'Cadastro Nacional de Pessoa Jurídica',
-            'RG': 'Registro Geral',
             'PERSON_NAME': 'Nome de Pessoa',
-            'TITULO_ELEITOR': 'Título de Eleitor',
             
             # --- Contatos e Localização ---
             'EMAIL': 'Endereço de E-mail',
             'PHONE': 'Número de Telefone',
-            'FULL_ADDRESS': 'Endereço Completo',     # Corrigido
-            'LOCATION': 'Endereço/Localização',      # Mantido por compatibilidade
+            'FULL_ADDRESS': 'Endereço Completo',
             'CEP': 'Código de Endereçamento Postal',
 
-            # --- Documentos Diversos ---
-            'DOC_GENERICO': 'Documento Genérico',    # Corrigido
-            'MATRICULA': 'Matrícula Funcional (Servidor)',
-            'OAB': 'Registro Profissional OAB',
-            'CNH': 'Carteira Nacional de Habilitação',
-            'NIS': 'NIS/PIS/PASEP',
+            # --- Documentos Diversos (Agora inclui GENERAL_REGISTRY) ---
+            'GENERAL_REGISTRY': 'Registros Gerais (RG/NIS/PIS/CNH)',
+            'DOC_GENERICO': 'Documento Genérico', 
+            'MATRICULA': 'Matrícula Funcional',
+            'OAB': 'Registro OAB',
             'CREDIT_CARD': 'Número de Cartão de Crédito',
-            'SEI_PROCESS': 'Número de Processo SEI',
             
-            # --- Dados Sensíveis ---
+            # --- Dados Sensíveis (Atualizado) ---
             'SENSITIVE_HEALTH': 'Dados de Saúde (Sensível)',
-            'SENSITIVE_MINOR': 'Dados de Menor de Idade (Sensível)', # Corrigido (Era MINOR_CONTEXT)
-            'SENSITIVE_SOCIAL': 'Dados Sociais (Sensível)',          # Adicionado
+            'SENSITIVE_MINOR': 'Dados de Menor de Idade (Sensível)',
+            'SENSITIVE_SOCIAL': 'Dados Sociais (Sensível)',
+            'SENSITIVE_RACE': 'Dados de Raça/Cor (Sensível)',
+            'SENSITIVE_GENDER': 'Dados de Gênero (Sensível)',
+            
             'DATE_BIRTH': 'Data de Nascimento'
         }
         return descriptions.get(pii_type, pii_type)
@@ -107,28 +106,29 @@ class ReportService:
     @staticmethod
     def _calculate_risk_level(pii_stats: Dict[str, int], total_records: int) -> str:
         """
-        Calcula nível de risco. 
+        Calcula nível de risco.
+        Atualizado para considerar Raça e Gênero como CRÍTICO.
         """
-        # IDs fortes ou Dados Sensíveis (Art 5 LGPD)
-        # Atualizei para incluir as chaves novas do seu detector
         critical_pii = {
-            'CPF', 'CNPJ', 'RG', 'CREDIT_CARD', 'CNH', 
-            'SENSITIVE_HEALTH', 'SENSITIVE_MINOR', 'SENSITIVE_SOCIAL'
+            'CPF', 'CNPJ', 'GENERAL_REGISTRY', 'CREDIT_CARD',
+            'SENSITIVE_HEALTH', 'SENSITIVE_MINOR', 'SENSITIVE_SOCIAL', 
+            'SENSITIVE_RACE', 'SENSITIVE_GENDER'
         }
         
-        # IDs de contato ou profissionais
         high_risk_pii = {
-            'EMAIL', 'PHONE', 'DATE_BIRTH', 'OAB', 'MATRICULA', 'TITULO_ELEITOR', 'FULL_ADDRESS'
+            'EMAIL', 'PHONE', 'DATE_BIRTH', 'OAB', 'MATRICULA', 'FULL_ADDRESS'
         }
         
         critical_count = sum(pii_stats.get(pii, 0) for pii in critical_pii)
         high_count = sum(pii_stats.get(pii, 0) for pii in high_risk_pii)
         total_pii = sum(pii_stats.values())
         
-        # Lógica de Classificação
         if critical_count > 0:
-            # Se houver qualquer dado de saúde ou mais de 5% de dados críticos
-            if (critical_count / total_records > 0.05) or ('SENSITIVE_HEALTH' in pii_stats):
+            # Qualquer dado sensível já eleva para crítico
+            sensitive_detected = any(k in pii_stats for k in [
+                'SENSITIVE_HEALTH', 'SENSITIVE_RACE', 'SENSITIVE_GENDER', 'SENSITIVE_MINOR'
+            ])
+            if (critical_count / total_records > 0.05) or sensitive_detected:
                 return 'CRÍTICO'
             return 'ALTO'
         elif high_count > 0:
@@ -141,7 +141,7 @@ class ReportService:
     @staticmethod
     def _get_risk_description(risk_level: str) -> str:
         descriptions = {
-            'CRÍTICO': 'Dados sensíveis (Saúde/Menores) ou identificadores oficiais detectados em massa.',
+            'CRÍTICO': 'Dados sensíveis (Saúde/Raça/Gênero) ou identificadores oficiais detectados.',
             'ALTO': 'Identificadores oficiais e dados de contato detectados. Risco de identificação direta.',
             'MÉDIO': 'Dados profissionais ou de localização detectados.',
             'BAIXO': 'Poucos dados pessoais esparsos.',
@@ -157,15 +157,13 @@ class ReportService:
             recommendations.append('Implementar criptografia em repouso e trânsito')
             recommendations.append('Acesso restrito: Necessidade de conhecer (Need-to-know)')
         
-        # Recomendação específica para dados sensíveis
         if 'SENSITIVE_HEALTH' in pii_stats:
             recommendations.append('ALERTA: Dado Sensível de Saúde. Requer Relatório de Impacto (RIPD/DPIA)')
-        
-        # Atualizado para a chave correta (SENSITIVE_MINOR)
-        if 'SENSITIVE_MINOR' in pii_stats:
-            recommendations.append('ALERTA: Dados de menores detectados. Tratamento requer base legal específica.')
+            
+        if 'SENSITIVE_RACE' in pii_stats or 'SENSITIVE_GENDER' in pii_stats:
+            recommendations.append('ALERTA: Dados Discriminatórios (Raça/Gênero) detectados. Tratamento restrito.')
 
-        if 'CPF' in pii_stats or 'RG' in pii_stats or 'CNH' in pii_stats:
+        if 'CPF' in pii_stats or 'GENERAL_REGISTRY' in pii_stats:
             recommendations.append('Identificadores governamentais: Aplicar mascaramento irreversível para ambientes de teste')
         
         if not recommendations:

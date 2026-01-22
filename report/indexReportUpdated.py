@@ -1,21 +1,20 @@
 """
-Processador Standalone de PII - Visual Dashboard Style (Com Detalhamento de IDs)
-Gera um relatório visual listando os IDs e Quantidades para cada dado sensível.
+Processador Standalone de PII - V8.0 (Regex Blindado + Google Phonenumbers)
+Correção: Impede que números de processos (iniciados em 0) sejam confundidos com telefones.
 """
 import pandas as pd
 import spacy
 import re
 import os
 import time
-from datetime import datetime
+import phonenumbers
 from collections import defaultdict
-from typing import Dict, List, Set, Tuple
+from typing import Dict, Tuple
 
 # --- Configuração ---
 FILE_NAME = './files/AMOSTRA_e-SIC.xlsx'
 TARGET_COLUMN = 'Texto Mascarado'
 
-# Cores para o terminal
 class Colors:
     HEADER = '\033[95m'
     BLUE = '\033[94m'
@@ -25,36 +24,30 @@ class Colors:
     FAIL = '\033[91m'
     ENDC = '\033[0m'
     BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
     GREY = '\033[90m'
 
 class PIIDetector:
     """
-    Detector de PII V6.0 - Validação por Dicionário (IBGE)
+    Detector de PII V8.0 - Foco em eliminação de Falsos Positivos em Telefones
     """
     
     PII_TYPES = {
-        # --- Identificadores Pessoais ---
         'PERSON_NAME': 'Nome de Pessoa',
         'CPF': 'Cadastro de Pessoa Física',
         'RG': 'Registro Geral',
         'CNPJ': 'Cadastro Nacional de Pessoa Jurídica',
-        
-        # --- Contatos ---
         'EMAIL': 'Endereço de E-mail',
         'PHONE': 'Número de Telefone',
-        
-        # --- Tradução dos Genéricos ---
         'FULL_ADDRESS': 'Endereço Completo',
         'DOC_GENERICO': 'Documento Genérico',
-        
-        # --- Dados Sensíveis ---
         'SENSITIVE_HEALTH': 'Dados de Saúde (Sensível)',
         'SENSITIVE_MINOR': 'Dados de Menor de Idade (Sensível)',
-        'SENSITIVE_SOCIAL': 'Dados Sociais (Sensível)'
+        'SENSITIVE_SOCIAL': 'Dados Sociais (Sensível)',
+        'SENSITIVE_RACE': 'Dados de Raça/Cor (Sensível)',
+        'SENSITIVE_GENDER': 'Dados de Gênero (Sensível)'
     }
 
-    # --- BASE DE CONHECIMENTO (TOP NOMES/SOBRENOMES BRASIL - Fonte: IBGE) ---
+    # Base de conhecimento para validação de nomes (IBGE)
     COMMON_NAMES = {
         'maria', 'joao', 'ana', 'carlos', 'paulo', 'jose', 'lucas', 'pedro',
         'marcos', 'luiz', 'gabriel', 'rafael', 'francisco', 'marcelo', 'bruno',
@@ -85,22 +78,30 @@ class PIIDetector:
     }
 
     def __init__(self):
-        print("📦 Carregando recursos de IA (PIIDetector V6.0)...", end='\r')
+        print("📦 Carregando recursos de IA (PIIDetector V8.0)...", end='\r')
         try:
             self.nlp = spacy.load("pt_core_news_lg")
-            # Otimização
             pipes_to_disable = ['parser', 'tagger', 'morphologizer', 'lemmatizer']
             existing_pipes = [p for p in pipes_to_disable if p in self.nlp.pipe_names]
             if existing_pipes:
                 self.nlp.disable_pipes(existing_pipes)
         except OSError:
             print(f"{Colors.FAIL}Erro: Modelo 'pt_core_news_lg' não encontrado.{Colors.ENDC}")
-            print("  Execute: python -m spacy download pt_core_news_lg")
-            exit(1)
+            self.nlp = None
 
+        # --- REGEX OTIMIZADO PARA VALIDAR TELEFONES REAIS ---
         self.phone_patterns = [
-            r'\b(?:\(?\d{2}\)?\s?)?(?:9\s?)?[5-9]\d{3}[-.\s]\d{4}\b',
-            r'(?i)(?:tel|cel|zap|whatsapp|contato|fone)[:\s\.]+\d{8,12}\b'
+            # 1. Formatado (Ex: (61) 91234-5678)
+            r'\b(?:\(?[1-9]{2}\)?\s?)(?:9\s?\d|[2-5]\d)\d{2}[-.\s]\d{4}\b(?!/\d{4}-\d{2})',
+
+            # 2. Celular Solto (Ex: 61988887777)
+            r'\b[1-9]{2}9\d{8}\b(?!/\d{4}-\d{2})',
+
+            # 3. Fixo Solto (Ex: 1133334444)
+            r'\b[1-9]{2}[2-5]\d{7}\b(?!/\d{4}-\d{2})',
+
+            # 4. Contexto Explícito (Backup – restringido)
+            r'(?i)(?:\b(?:tel|cel|zap|whatsapp|contato|fone)\b)[:\s\-]+(?:\(?[1-9]{2}\)?\s?)?(?:9\d{4}|\d{4})[-.\s]?\d{4}\b(?!/\d{4}-\d{2})'
         ]
 
         self.regex_patterns = {
@@ -115,7 +116,9 @@ class PIIDetector:
         self.sensitive_keywords = {
             'SENSITIVE_HEALTH': [r'\bc[âa]ncer\b', r'\boncologia\b', r'\bhiv\b', r'\baids\b', r'\basm[áa]tico\b', r'\bminha doen[çc]a\b', r'\blaudo m[ée]dico\b', r'\bCID\s?[A-Z]\d', r'\btranstorno\b', r'\bdepress[ãa]o\b', r'\bdefici[êe]ncia\b', r'\bautis'],
             'SENSITIVE_MINOR': [r'\bmenor de idade\b', r'\bcrian[çc]a\b', r'\bfilh[ao] (?:de )?menor\b', r'\btutela\b', r'\bcreche\b', r'\balun[ao]\b'],
-            'SENSITIVE_SOCIAL': [r'\bvulnerabilidade\b', r'\baux[íi]lio emergencial\b', r'\bcesta b[áa]sica\b', r'\bbolsa fam[íi]lia\b']
+            'SENSITIVE_SOCIAL': [r'\bvulnerabilidade\b', r'\baux[íi]lio emergencial\b', r'\bcesta b[áa]sica\b', r'\bbolsa fam[íi]lia\b'],
+            'SENSITIVE_RACE': [r'\bcor d[ae] pele\b', r'\braça\b', r'\betnia\b', r'\bnegro\b', r'\bpardo\b'], # Ajustado para "de/da"
+            'SENSITIVE_GENDER': [r'\btrans\b', r'\bhormoniza[çc][ãa]o\b', r'\bidentidade de g[êe]nero\b']
         }
 
     def detect_and_redact(self, text: str) -> Tuple[str, Dict[str, int]]:
@@ -131,13 +134,26 @@ class PIIDetector:
                 indices_to_mask.update(range(match.start(), match.end()))
                 pii_stats[pii_type] += 1
 
-        # 2. Telefones (Híbrido)
+        # 2. Telefones (Prioridade: Regex Estrito > Lib Google)
         for pattern in self.phone_patterns:
             for match in re.finditer(pattern, text):
                 match_range = set(range(match.start(), match.end()))
                 if not match_range.intersection(indices_to_mask):
                     indices_to_mask.update(match_range)
                     pii_stats['PHONE'] += 1
+        
+        # Backup: Lib Google (apenas se passar na validação estrita da lib)
+        try:
+            for match in phonenumbers.PhoneNumberMatcher(text, "BR"):
+                # Validação extra: a lib as vezes pega datas como telefones. 
+                # Se o número não for válido para a região, ignoramos.
+                if phonenumbers.is_valid_number(match.number):
+                    match_range = set(range(match.start, match.end))
+                    if not match_range.intersection(indices_to_mask):
+                        indices_to_mask.update(match_range)
+                        pii_stats['PHONE'] += 1
+        except Exception:
+            pass
 
         # 3. Sensíveis
         for sens_type, keywords in self.sensitive_keywords.items():
@@ -146,7 +162,7 @@ class PIIDetector:
                     indices_to_mask.update(range(match.start(), match.end()))
                     pii_stats[sens_type] += 1
 
-        # 4. NLP COM VALIDAÇÃO DE DICIONÁRIO
+        # 4. Nomes (NLP + IBGE)
         if self.nlp:
             try:
                 doc = self.nlp(text)
@@ -156,13 +172,9 @@ class PIIDetector:
                         clean_name = re.sub(r'[^\w\s]', '', name_candidate.lower())
                         parts = clean_name.split()
                         
-                        if len(parts) < 2:
-                            continue
+                        if len(parts) < 2: continue
                         
-                        has_common_part = any(
-                            p in self.COMMON_NAMES or p in self.COMMON_SURNAMES 
-                            for p in parts
-                        )
+                        has_common_part = any(p in self.COMMON_NAMES or p in self.COMMON_SURNAMES for p in parts)
                         has_honorific = re.search(r'(?i)\b(?:dr|dra|sr|sra)\.?\s', text[max(0, ent.start_char-5):ent.start_char])
 
                         if not has_common_part and not has_honorific:
@@ -172,7 +184,6 @@ class PIIDetector:
                         if not match_range.intersection(indices_to_mask):
                             indices_to_mask.update(match_range)
                             pii_stats['PERSON_NAME'] += 1
-                                
             except Exception:
                 pass
 
@@ -180,63 +191,52 @@ class PIIDetector:
         redacted_chars = []
         for i, char in enumerate(text):
             if i in indices_to_mask:
-                if char.isalnum():
-                    redacted_chars.append('x')
-                else:
-                    redacted_chars.append(char)
+                redacted_chars.append('x' if char.isalnum() else char)
             else:
                 redacted_chars.append(char)
         
         return "".join(redacted_chars), dict(pii_stats)
 
-    def get_pii_type_description(self, pii_type: str) -> str:
-        return self.PII_TYPES.get(pii_type, pii_type)
-    
     def get_description(self, key):
-        return self.get_pii_type_description(key)
+        return self.PII_TYPES.get(key, key)
 
 
 class DashboardGenerator:
-    """Gera o layout visual similar à imagem com o detalhamento solicitado"""
-    
     @staticmethod
     def print_dashboard(df, pii_details, records_with_pii, processing_time, detector):
         total_records = len(df)
         pii_rate = (records_with_pii / total_records * 100) if total_records > 0 else 0
         
-        # Calcular totais a partir do detalhamento
         pii_stats_total = {k: sum(item['qtd'] for item in v) for k, v in pii_details.items()}
         
-        # Determinar Risco
         risk_color = Colors.GREEN
         risk_label = "BAIXO"
         risk_desc = "Poucos dados pessoais esparsos."
         
-        has_sensitive = 'SENSITIVE_HEALTH' in pii_stats_total or 'SENSITIVE_MINOR' in pii_stats_total or 'SENSITIVE_SOCIAL' in pii_stats_total
+        sensitive_keys = ['SENSITIVE_HEALTH', 'SENSITIVE_MINOR', 'SENSITIVE_SOCIAL', 'SENSITIVE_RACE', 'SENSITIVE_GENDER']
+        has_sensitive = any(k in pii_stats_total for k in sensitive_keys)
         has_mass_ids = sum(pii_stats_total.get(k, 0) for k in ['CPF', 'CNPJ']) > (total_records * 0.1)
         
         if has_sensitive or has_mass_ids:
             risk_color = Colors.FAIL
             risk_label = "CRÍTICO"
-            risk_desc = "Dados sensíveis (Saúde/Menores) ou identificadores oficiais em massa."
+            risk_desc = "Dados sensíveis ou identificadores oficiais em massa."
         elif records_with_pii > 0:
             risk_color = Colors.WARNING
             risk_label = "ALTO"
             risk_desc = "Identificadores pessoais detectados."
 
-        # === HEADER E RISCO ===
         print("\n" * 2)
         print(f"{Colors.BOLD}🔵 Relatório de Classificação de Pedido (LGPD){Colors.ENDC}")
         print(f"{Colors.CYAN}   Arquivo analisado: {os.path.basename(FILE_NAME)}{Colors.ENDC}")
         print()
         
         print(f"{risk_color}{'='*80}{Colors.ENDC}")
-        print(f"{risk_color} ⚠  CLASSIFICAÇÃO: PEDIDO NÃO PÚBLICO{Colors.ENDC}")
-        print(f"    Foram identificadas informações pessoais ou dados sensíveis no conteúdo.")
+        print(f"{risk_color} ⚠  CLASSIFICAÇÃO: PEDIDO NÃO PÚBLICO ({risk_label}){Colors.ENDC}")
+        print(f"    {risk_desc}")
         print(f"{risk_color}{'='*80}{Colors.ENDC}")
         print()
 
-        # === INDICADORES DO PROCESSAMENTO (Parte Superior) ===
         print(f"{Colors.BOLD}INDICADORES DO PROCESSAMENTO{Colors.ENDC}")
         print("-" * 40)
         metrics = [
@@ -252,103 +252,78 @@ class DashboardGenerator:
             print(f"{label:<25} {color}{val:>5}{Colors.ENDC}")
         print()
 
-        # === DETALHAMENTO POR TIPO DE DADO (Nova Visualização Solicitada) ===
         print(f"{Colors.BOLD}DETALHAMENTO POR TIPO DE DADO E REGISTRO{Colors.ENDC}")
         print("-" * 80)
         
-        # Ordenar por quantidade total
         sorted_details = sorted(pii_details.items(), key=lambda x: sum(i['qtd'] for i in x[1]), reverse=True)
         
         for pii_type, occurrences in sorted_details:
             total_count = sum(item['qtd'] for item in occurrences)
             desc = detector.get_description(pii_type)
             
-            # Badge do título
             color_badge = Colors.FAIL if "Sensível" in desc or pii_type in ['CPF', 'CNPJ'] else Colors.WARNING
             print(f"{color_badge}[{desc}: {total_count} ocorrências]{Colors.ENDC}")
             
-            # Formatar lista de IDs e quantidades
-            # Agrupa tudo em uma string formatada
-            ids_str_list = []
-            for item in occurrences:
-                ids_str_list.append(f"ID {item['id']} (Qtd: {item['qtd']})")
-            
-            # Quebra de linha para não ficar uma linha infinita se tiver muitos
+            ids_str_list = [f"ID {item['id']} (Qtd: {item['qtd']})" for item in occurrences]
             details_str = ", ".join(ids_str_list)
             
-            # Impressão com recuo
             print(f"{Colors.GREY}   └── Ocorreu nos registros: {details_str}{Colors.ENDC}")
-            print() # Espaço entre tipos
-
-        # RODAPÉ DE RISCO
-        print("-" * 80)
-        print(f"{Colors.FAIL}🔴 Avaliação de Risco – LGPD ({risk_label}){Colors.ENDC}")
-        print(f"   {risk_desc}")
-        print()
+            print() 
 
 
 def main():
-    # 1. Setup
     if not os.path.exists(FILE_NAME):
-        print("Arquivo não encontrado.")
+        print(f"Arquivo '{FILE_NAME}' não encontrado.")
         return
 
     detector = PIIDetector()
     
-    # 2. Leitura
     try:
-        df = pd.read_excel(FILE_NAME)
-    except:
-        print("Erro ao ler Excel.")
+        if FILE_NAME.endswith('.csv'):
+            df = pd.read_csv(FILE_NAME)
+        else:
+            df = pd.read_excel(FILE_NAME)
+    except Exception as e:
+        print(f"Erro ao ler arquivo: {e}")
         return
 
-    if TARGET_COLUMN not in df.columns:
-        print(f"Coluna '{TARGET_COLUMN}' não encontrada.")
-        return
+    df.columns = [c.strip() for c in df.columns]
     
-    # Tenta identificar uma coluna de ID, se não usa o índice + 2 (Linha Excel)
-    possible_id_cols = ['id', 'ID', 'Id', 'Protocolo', 'protocolo', 'Numero', 'numero']
+    target_col = next((c for c in df.columns if TARGET_COLUMN.lower() in c.lower()), None)
+    if not target_col:
+        for col in df.columns:
+            if df[col].dtype == 'object' and df[col].str.len().mean() > 20:
+                target_col = col
+                break
+    
+    if not target_col:
+        print(f"Coluna de texto não identificada.")
+        return
+
+    possible_id_cols = ['id', 'ID', 'Id', 'Protocolo', 'protocolo']
     id_col = next((col for col in possible_id_cols if col in df.columns), None)
 
-    # 3. Processamento Silencioso (Barra simples)
-    print(f"Processando {len(df)} registros...", end=' ')
+    print(f"Processando {len(df)} registros na coluna '{target_col}'...", end=' ')
     start_time = time.time()
     
-    anonymized_texts = []
-    # Estrutura nova: Dicionário onde a chave é o Tipo de PII e o valor é uma lista de dicts {'id': X, 'qtd': Y}
     pii_details = defaultdict(list)
     records_with_pii = 0
 
     for idx, row in df.iterrows():
-        text, stats = detector.detect_and_redact(row[TARGET_COLUMN])
-        anonymized_texts.append(text)
+        text_content = str(row[target_col])
+        _, stats = detector.detect_and_redact(text_content)
         
         if stats:
             records_with_pii += 1
-            # Determinar o ID do registro para o relatório
             record_id = row[id_col] if id_col else f"Linha_{idx + 2}"
             
             for pii_type, count in stats.items():
-                pii_details[pii_type].append({
-                    'id': record_id,
-                    'qtd': count
-                })
+                pii_details[pii_type].append({'id': record_id, 'qtd': count})
     
     processing_time = time.time() - start_time
     print("Concluído! ✅")
 
-    # 4. Gerar Dashboard Visual com Detalhamento
-    DashboardGenerator.print_dashboard(
-        df, 
-        pii_details, 
-        records_with_pii, 
-        processing_time, 
-        detector
-    )
-
-    # 5. Salvar (Opcional)
-    df['Texto_Anonimizado'] = anonymized_texts
-    # df.to_excel("resultado_anonimizado.xlsx") 
+    DashboardGenerator.print_dashboard(df, pii_details, records_with_pii, processing_time, detector)
 
 if __name__ == "__main__":
     main()
