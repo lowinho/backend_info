@@ -12,21 +12,27 @@ class PIIDetector:
     """
     
     PII_TYPES = {
-        'CPF': 'CPF',
-        'CNPJ': 'CNPJ',
-        'RG': 'RG',
-        'EMAIL': 'E-mail Pessoal',
-        'PHONE': 'Telefone/Celular',
-        'PERSON_NAME': 'Nome Próprio (Validado)',
-        'FULL_ADDRESS': 'Endereço Residencial',
-        'DOC_GENERICO': 'Outros Documentos',
-        'SENSITIVE_HEALTH': 'DADO SENSÍVEL: Saúde',
-        'SENSITIVE_MINOR': 'DADO SENSÍVEL: Menor',
-        'SENSITIVE_SOCIAL': 'DADO SENSÍVEL: Social'
+        # --- Identificadores Pessoais ---
+        'PERSON_NAME': 'Nome de Pessoa',
+        'CPF': 'Cadastro de Pessoa Física',
+        'RG': 'Registro Geral',
+        'CNPJ': 'Cadastro Nacional de Pessoa Jurídica',
+        
+        # --- Contatos ---
+        'EMAIL': 'Endereço de E-mail',
+        'PHONE': 'Número de Telefone',
+        
+        # --- Tradução dos Genéricos ---
+        'FULL_ADDRESS': 'Endereço Completo',
+        'DOC_GENERICO': 'Documento Genérico',
+        
+        # --- Dados Sensíveis ---
+        'SENSITIVE_HEALTH': 'Dados de Saúde (Sensível)',
+        'SENSITIVE_MINOR': 'Dados de Menor de Idade (Sensível)',
+        'SENSITIVE_SOCIAL': 'Dados Sociais (Sensível)'
     }
 
     # --- BASE DE CONHECIMENTO (TOP NOMES/SOBRENOMES BRASIL - Fonte: IBGE) ---
-    # Usado para validar se o que a IA achou é realmente um nome de pessoa
     COMMON_NAMES = {
         'maria', 'joao', 'ana', 'carlos', 'paulo', 'jose', 'lucas', 'pedro',
         'marcos', 'luiz', 'gabriel', 'rafael', 'francisco', 'marcelo', 'bruno',
@@ -117,7 +123,7 @@ class PIIDetector:
                     indices_to_mask.update(range(match.start(), match.end()))
                     pii_stats[sens_type] += 1
 
-        # 4. NLP COM VALIDAÇÃO DE DICIONÁRIO (A Grande Mudança)
+        # 4. NLP COM VALIDAÇÃO DE DICIONÁRIO
         if self.nlp:
             try:
                 doc = self.nlp(text)
@@ -132,21 +138,17 @@ class PIIDetector:
                             continue
                         
                         # --- REGRA 2: Validação Cruzada (IBGE) ---
-                        # Para ser um nome, pelo menos uma das partes TEM que ser 
-                        # um nome ou sobrenome comum brasileiro.
                         has_common_part = any(
                             p in self.COMMON_NAMES or p in self.COMMON_SURNAMES 
                             for p in parts
                         )
                         
-                        # Exceção: Se tiver "Dr." ou "Sra." antes, a gente confia mais
+                        # Exceção: Se tiver "Dr." ou "Sra." antes
                         has_honorific = re.search(r'(?i)\b(?:dr|dra|sr|sra)\.?\s', text[max(0, ent.start_char-5):ent.start_char])
 
-                        # Se não tem nome comum E não tem título (Dr/Sr), desconfie.
                         if not has_common_part and not has_honorific:
                             continue
 
-                        # Se passou na validação
                         match_range = set(range(ent.start_char, ent.end_char))
                         if not match_range.intersection(indices_to_mask):
                             indices_to_mask.update(match_range)
@@ -170,3 +172,24 @@ class PIIDetector:
 
     def get_pii_type_description(self, pii_type: str) -> str:
         return self.PII_TYPES.get(pii_type, pii_type)
+
+    def generate_breakdown_list(self, stats: Dict[str, int], total_records: int) -> List[Dict]:
+        """
+        Gera a lista formatada para o JSON já com as descrições traduzidas.
+        """
+        breakdown = []
+        total_pii = sum(stats.values())
+        
+        sorted_stats = sorted(stats.items(), key=lambda x: x[1], reverse=True)
+
+        for pii_type, count in sorted_stats:
+            percentage = round((count / total_pii * 100), 2) if total_pii > 0 else 0
+            
+            breakdown.append({
+                "count": count,
+                "description": self.PII_TYPES.get(pii_type, pii_type), 
+                "percentage": percentage,
+                "type": pii_type
+            })
+            
+        return breakdown

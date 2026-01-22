@@ -23,6 +23,7 @@ class ReportService:
         
         # Criar detalhamento por tipo de PII
         pii_breakdown = []
+        # Ordena do maior para o menor para ficar bonito no JSON
         for pii_type, count in sorted(pii_statistics.items(), key=lambda x: x[1], reverse=True):
             pii_breakdown.append({
                 'type': pii_type,
@@ -70,27 +71,36 @@ class ReportService:
     
     @staticmethod
     def _get_pii_description(pii_type: str) -> str:
-        """Retorna descrição em português, incluindo novos tipos"""
+        """Retorna descrição em português, sincronizada com o PIIDetector"""
         descriptions = {
+            # --- Identificadores Pessoais ---
             'CPF': 'Cadastro de Pessoa Física',
             'CNPJ': 'Cadastro Nacional de Pessoa Jurídica',
             'RG': 'Registro Geral',
+            'PERSON_NAME': 'Nome de Pessoa',
+            'TITULO_ELEITOR': 'Título de Eleitor',
+            
+            # --- Contatos e Localização ---
             'EMAIL': 'Endereço de E-mail',
             'PHONE': 'Número de Telefone',
+            'FULL_ADDRESS': 'Endereço Completo',     # Corrigido
+            'LOCATION': 'Endereço/Localização',      # Mantido por compatibilidade
             'CEP': 'Código de Endereçamento Postal',
-            'CREDIT_CARD': 'Número de Cartão de Crédito',
-            'SEI_PROCESS': 'Número de Processo SEI',
-            'PERSON_NAME': 'Nome de Pessoa',
-            'LOCATION': 'Endereço/Localização',
-            'DATE_BIRTH': 'Data de Nascimento',
-            # Novos tipos
+
+            # --- Documentos Diversos ---
+            'DOC_GENERICO': 'Documento Genérico',    # Corrigido
             'MATRICULA': 'Matrícula Funcional (Servidor)',
             'OAB': 'Registro Profissional OAB',
             'CNH': 'Carteira Nacional de Habilitação',
-            'TITULO_ELEITOR': 'Título de Eleitor',
             'NIS': 'NIS/PIS/PASEP',
+            'CREDIT_CARD': 'Número de Cartão de Crédito',
+            'SEI_PROCESS': 'Número de Processo SEI',
+            
+            # --- Dados Sensíveis ---
             'SENSITIVE_HEALTH': 'Dados de Saúde (Sensível)',
-            'MINOR_CONTEXT': 'Dados de Menor de Idade (Sensível)'
+            'SENSITIVE_MINOR': 'Dados de Menor de Idade (Sensível)', # Corrigido (Era MINOR_CONTEXT)
+            'SENSITIVE_SOCIAL': 'Dados Sociais (Sensível)',          # Adicionado
+            'DATE_BIRTH': 'Data de Nascimento'
         }
         return descriptions.get(pii_type, pii_type)
     
@@ -98,16 +108,17 @@ class ReportService:
     def _calculate_risk_level(pii_stats: Dict[str, int], total_records: int) -> str:
         """
         Calcula nível de risco. 
-        Atualizado: Dados sensíveis (Saúde) e múltiplos IDs elevam para CRÍTICO.
         """
         # IDs fortes ou Dados Sensíveis (Art 5 LGPD)
+        # Atualizei para incluir as chaves novas do seu detector
         critical_pii = {
             'CPF', 'CNPJ', 'RG', 'CREDIT_CARD', 'CNH', 
-            'SENSITIVE_HEALTH', 'MINOR_CONTEXT'
+            'SENSITIVE_HEALTH', 'SENSITIVE_MINOR', 'SENSITIVE_SOCIAL'
         }
+        
         # IDs de contato ou profissionais
         high_risk_pii = {
-            'EMAIL', 'PHONE', 'DATE_BIRTH', 'OAB', 'MATRICULA', 'TITULO_ELEITOR'
+            'EMAIL', 'PHONE', 'DATE_BIRTH', 'OAB', 'MATRICULA', 'TITULO_ELEITOR', 'FULL_ADDRESS'
         }
         
         critical_count = sum(pii_stats.get(pii, 0) for pii in critical_pii)
@@ -116,7 +127,7 @@ class ReportService:
         
         # Lógica de Classificação
         if critical_count > 0:
-            # Se mais de 5% dos registros tem dados críticos, ou se houver dado sensível
+            # Se houver qualquer dado de saúde ou mais de 5% de dados críticos
             if (critical_count / total_records > 0.05) or ('SENSITIVE_HEALTH' in pii_stats):
                 return 'CRÍTICO'
             return 'ALTO'
@@ -150,7 +161,8 @@ class ReportService:
         if 'SENSITIVE_HEALTH' in pii_stats:
             recommendations.append('ALERTA: Dado Sensível de Saúde. Requer Relatório de Impacto (RIPD/DPIA)')
         
-        if 'MINOR_CONTEXT' in pii_stats:
+        # Atualizado para a chave correta (SENSITIVE_MINOR)
+        if 'SENSITIVE_MINOR' in pii_stats:
             recommendations.append('ALERTA: Dados de menores detectados. Tratamento requer base legal específica.')
 
         if 'CPF' in pii_stats or 'RG' in pii_stats or 'CNH' in pii_stats:
