@@ -1,0 +1,11 @@
+ID,Texto Mascarado
+1,CPF 1234567890
+2,"Rua das Flores, 123 - São Paulo/SP"
+3,email usuario@dominio | João da Silva
+4,email usuario@dominio
+5,Classe social baixa | Nome: | CPF 123.456.789-00
+6,CPF 123.456.789-00 | CPF 111.222 | RG 45.678.901-2
+7,CPF 123.456.789-00 | email contato@empresa.com
+8,Classe social baixa | Raça declarada: parda | Gênero: feminino
+9,email contato@empresa.com | Paciente em tratamento oncológico
+10,Classe social baixa | CPF 111.222 | email contato@empresa.com

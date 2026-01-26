@@ -14,7 +14,8 @@ from collections import defaultdict
 from typing import Dict, Tuple
 
 # --- Configuração ---
-FILE_NAME = './files/AMOSTRA_e-SIC.xlsx'
+# FILE_NAME = './files/AMOSTRA_e-SIC.xlsx'
+FILE_NAME = './files/amostra_validacao_lgpd_v2.csv'
 TARGET_COLUMN = 'Texto Mascarado'
 
 class Colors:
