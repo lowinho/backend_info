@@ -1,560 +1,179 @@
-# 🔒 API de Proteção de Dados Pessoais (LGPD)
+## 🧠 Backend – API de Análise de Pedidos com Dados Pessoais
 
-> **⚠️ AVISO IMPORTANTE:** Se encontrar erro `HTTP 404` ao fazer build do Docker relacionado ao modelo SpaCy, o Dockerfile **já foi corrigido**. Execute: `docker-compose build --no-cache && docker-compose up -d`. Para mais soluções, veja: `TROUBLESHOOTING.md` ou execute `./fix_spacy.sh`
+O backend é responsável por **processar, analisar e classificar pedidos** (texto ou arquivos) com base na presença de **dados pessoais e sensíveis**, conforme os princípios da **LGPD** e os critérios definidos pela **CGDF**.
 
-Sistema completo de detecção e anonimização de PII (Personal Identifiable Information) em conformidade com a LGPD.
+Toda a API foi desenvolvida para fins de automatização que permitem a  identificação de pedidos que podem ou não serem classificados como **público**.
 
-## 🎯 Funcionalidades
+## ⚙️ Backend – Instruções de Instalação e Dependências
 
-- ✅ Upload de arquivos CSV e TXT
-- ✅ Detecção automática de 11 tipos de PII
-- ✅ Anonimização inteligente preservando estrutura
-- ✅ Relatórios detalhados com UUID único
-- ✅ Rastreabilidade completa de dados
-- ✅ Análise de risco LGPD
-- ✅ API RESTful documentada
+Esta seção descreve os **pré-requisitos**, **dependências** e o processo necessário para executar o backend da solução de análise de pedidos contendo dados pessoais ou sensíveis.
 
-## 📋 Tipos de PII Detectados
+### 1.1 Pré-requisitos
 
-| Tipo | Descrição | Exemplo |
-|------|-----------|---------|
-| CPF | Cadastro de Pessoa Física | 123.456.789-00 |
-| CNPJ | Cadastro Nacional de Pessoa Jurídica | 12.345.678/0001-00 |
-| RG | Registro Geral | 12.345.678-9 |
-| EMAIL | Endereço de e-mail | usuario@email.com |
-| PHONE | Número de telefone | (11) 98765-4321 |
-| CEP | Código de Endereçamento Postal | 12345-678 |
-| CREDIT_CARD | Número de cartão de crédito | 1234 5678 9012 3456 |
-| SEI_PROCESS | Número de processo SEI | 12345-123456/2024-01 |
-| PERSON_NAME | Nome de pessoa | João da Silva |
-| LOCATION | Endereço/Localização | Rua das Flores, 123 |
-| DATE_BIRTH | Data de nascimento | 01/01/1990 |
+Antes de iniciar a aplicação, certifique-se de que os seguintes softwares estejam instalados no ambiente:
 
-# 🚀 Instalação
+- **Python 3.9 ou superior**
+- **pip** (gerenciador de pacotes do Python)
+- **MongoDB** (local ou remoto)  
+  - Utilizado para armazenamento dos relatórios de análise
+- **Git** (opcional, para clonagem do repositório)
 
-## ⚠️ IMPORTANTE: Problema Conhecido com SpaCy
-
-Se você encontrar o erro `HTTP error 404` ao fazer o build do Docker, isso é causado por rate limiting do GitHub. **O Dockerfile já foi corrigido** para usar um método mais confiável.
-
-**Solução rápida:**
-```bash
-# Rebuild com cache limpo
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
-```
-
-**Se ainda houver problemas:** Consulte o arquivo `TROUBLESHOOTING.md` para soluções detalhadas.
+> ℹ️ Recomenda-se o uso de um ambiente virtual (`venv`) para evitar conflitos entre dependências.
 
 ---
 
-## Opções de Instalação
-
-### 1. Verificar Sistema (Recomendado)
-Antes de começar, verifique se seu sistema está pronto:
 ```bash
-./check_requirements.sh
+# Clone o Repositório
+git clone git@github.com:lowinho/backend_info.git
 ```
 
-### 2. Docker (Recomendado para Produção)
+### 1.2 Instalação das Dependências
+
+O backend utiliza o arquivo `requirements.txt` para gerenciar todas as bibliotecas necessárias, permitindo a **instalação automatizada** do ambiente.
+
+#### Passo 1 – Criar e ativar o ambiente virtual (opcional, recomendado)
+
 ```bash
-# Clonar repositório
-git clone <repo-url>
-cd pii_api
-
-# Verificar pré-requisitos
-make check
-
-# Build e iniciar
-make build
-make up
-
-# Ou usar comandos diretos:
-docker-compose build --no-cache
-docker-compose up -d
-
-# API estará disponível em http://localhost:5000
-```
-
-### 3. Instalação Manual (Desenvolvimento)
-```bash
-# Executar script de instalação
-./install.sh
-
-# Ou manualmente:
 python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# venv\Scripts\activate   # Windows
+```
 
+Ativar no Linux/Mac:
+
+```bash
+source venv/bin/activate
+```
+
+Ativar no Windows:
+
+```bash
+venv\Scripts\activate
+```
+#### Passo 2 – Instalar as dependências
+```bash
 pip install -r requirements.txt
-python -m spacy download pt_core_news_lg
-
-# Configurar .env
-cp .env.example .env
-nano .env  # Editar com suas configurações
-
-# Iniciar MongoDB
-docker run -d -p 27017:27017 --name mongodb mongo:latest
-
-# Iniciar API
-python app.py
 ```
+#### 1.3 Principais Dependências Utilizadas
 
-### 4. Usando Makefile (Linux/Mac)
+As bibliotecas abaixo são utilizadas no backend, organizadas por finalidade:
+
+🌐 Framework da API
+
+* **Flask** – Framework web principal da API
+
+* **flask-cors** – Habilita comunicação entre frontend e backend
+
+* **python-dotenv** – Gerenciamento de variáveis de ambiente
+
+📊 Processamento de Dados
+
+* **pandas** – Leitura e manipulação de dados estruturados
+
+* **openpyxl** – Suporte a arquivos Excel (.xlsx)
+
+🧠 Detecção de Dados Pessoais (NLP)
+
+* **spaCy** – Processamento de linguagem natural para identificação de PII
+
+* **phonenumbers** – Validação e detecção de números telefônicos
+
+🗄️ Banco de Dados
+
+* **pymongo** – Integração com MongoDB
+
+🔐 Segurança e Utilidades
+
+* **cryptography** – Suporte a práticas de segurança e criptografia
+
+* **werkzeug** – Utilitários internos do Flask
+
+* **python-multipart** – Upload de arquivos via formulário
+
+## 🔧 Backend — Instruções de Execução
+
+Esta seção descreve como executar o processador Standalone de Detecção de Dados Pessoais (PII), bem como o formato de entrada e saída dos dados analisados.
+
+### 2. Instruções de Execução
+**a) Comandos para Execução**
+
+Após instalar todas as dependências e garantir que o ambiente esteja configurado corretamente, execute o script principal com o comando abaixo:
 ```bash
-# Ver todos os comandos disponíveis
-make help
-
-# Instalar localmente
-make install
-
-# Docker (build + up)
-make rebuild
-
-# Ver logs
-make logs
-
-# Testar
-make test
+python main.py
 ```
 
-## 🐳 Comandos Docker Úteis
-
+**📌 Observação:**
+O script foi desenvolvido para execução standalone, sem necessidade de parâmetros via linha de comando.
+O arquivo de entrada é configurado diretamente no código pela variável:
 ```bash
-# Iniciar
-make up
-# ou
-docker-compose up -d
-
-# Ver logs
-make logs
-# ou
-docker-compose logs -f
-
-# Parar
-make down
-# ou
-docker-compose down
-
-# Restart
-make restart
-# ou
-docker-compose restart
-
-# Limpar tudo
-make clean
-# ou
-docker-compose down -v
+FILE_NAME = './files/AMOSTRA_e-SIC.xlsx'
 ```
 
-A API estará disponível em: `http://localhost:5000`
+#### Caso deseje analisar outro arquivo, basta alterar esse caminho.
 
-## 📡 Endpoints da API
+**b) Formato dos Dados de Entrada e Saída
+📥**
 
-### 1. Health Check
-```http
-GET /health
-```
+### Formato de Entrada
 
-**Resposta:**
-```json
-{
-  "status": "healthy",
-  "timestamp": "2024-01-19T10:30:00",
-  "services": {
-    "api": "operational",
-    "mongodb": "connected",
-    "pii_detector": "loaded"
-  }
-}
-```
+O sistema aceita arquivos nos seguintes formatos:
 
-### 2. Upload de Arquivo
-```http
-POST /api/v1/upload
-Content-Type: multipart/form-data
+* **.xlsx (Excel)**
 
-file: <arquivo.csv ou arquivo.txt>
-```
+* **.csv**
 
-**Resposta de Sucesso:**
-```json
-{
-  "success": true,
-  "message": "Arquivo processado com sucesso",
-  "data": {
-    "process_uuid": "550e8400-e29b-41d4-a716-446655440000",
-    "filename": "dados.csv",
-    "total_records": 1000,
-    "records_anonymized": 850,
-    "pii_detected": {
-      "CPF": 450,
-      "EMAIL": 300,
-      "PHONE": 250,
-      "PERSON_NAME": 800
-    },
-    "processing_time_seconds": 12.5
-  }
-}
-```
+Requisitos do arquivo:
 
-### 3. Listar Relatórios
-```http
-GET /api/v1/reports?limit=50&skip=0
-```
+Deve conter ao menos uma coluna de texto livre, onde serão analisados os possíveis dados pessoais.
 
-**Resposta:**
-```json
-{
-  "success": true,
-  "data": {
-    "reports": [...],
-    "total": 150,
-    "limit": 50,
-    "skip": 0
-  }
-}
-```
+Preferencialmente, a coluna deve conter no nome algo semelhante a:
 
-### 4. Obter Relatório Específico
-```http
-GET /api/v1/reports/{process_uuid}
-```
+**Texto Mascarado**
 
-**Resposta:**
-```json
-{
-  "success": true,
-  "data": {
-    "process_uuid": "550e8400-e29b-41d4-a716-446655440000",
-    "created_at": "2024-01-19T10:30:00",
-    "file_info": {
-      "filename": "dados.csv",
-      "file_type": "csv",
-      "total_records": 1000
-    },
-    "processing_stats": {
-      "processing_time_seconds": 12.5,
-      "records_per_second": 80,
-      "total_pii_detected": 1800,
-      "records_with_pii": 850,
-      "pii_rate_percentage": 85.0
-    },
-    "pii_breakdown": [
-      {
-        "type": "PERSON_NAME",
-        "description": "Nome de Pessoa",
-        "count": 800,
-        "percentage": 44.44
-      },
-      {
-        "type": "CPF",
-        "description": "Cadastro de Pessoa Física",
-        "count": 450,
-        "percentage": 25.0
-      }
-    ],
-    "risk_assessment": {
-      "level": "ALTO",
-      "description": "Dados sensíveis detectados...",
-      "recommendations": [
-        "Implementar criptografia adicional...",
-        "Restringir acesso..."
-      ]
-    },
-    "lgpd_compliance": {
-      "anonymization_applied": true,
-      "data_minimization": true,
-      "processing_date": "2024-01-19T10:30:00",
-      "retention_policy": "Dados originais não armazenados"
-    }
-  }
-}
-```
+Caso não exista uma coluna com esse nome, o sistema tentará identificar automaticamente a coluna de texto mais longa.
 
-### 5. Obter Registros por UUID
-```http
-GET /api/v1/records/{process_uuid}?limit=100&skip=0
-```
+Opcionalmente, o arquivo pode conter uma coluna de identificação do registro, como:
 
-**Resposta:**
-```json
-{
-  "success": true,
-  "data": {
-    "records": [
-      {
-        "process_uuid": "550e8400-...",
-        "record_id": "0",
-        "mask_text": "João Silva, CPF 123.456.789-00",
-        "text_formatted": "xxxx xxxxx, xxx xxx.xxx.xxx-xx",
-        "pii_detected": {
-          "PERSON_NAME": 1,
-          "CPF": 1
-        },
-        "has_pii": true,
-        "processed_at": "2024-01-19T10:30:00"
-      }
-    ],
-    "total": 1000,
-    "limit": 100,
-    "skip": 0
-  }
-}
-```
+**ID, Id, id, Protocolo, protocolo**
 
-### 6. Listar Requisições Anonimizadas (Frontend)
-```http
-GET /api/v1/requests?limit=50&skip=0&sort=id&order=asc
-```
-
-**Resposta:**
-```json
-{
-  "success": true,
-  "data": {
-    "requests": [
-      {
-        "id": 1,
-        "text_formatted": "xxxx xxxxx mora na xxx xxx...",
-        "proccess_date": "2024-01-19T10:30:00"
-      }
-    ],
-    "total": 1500,
-    "limit": 50,
-    "skip": 0,
-    "page": 1,
-    "total_pages": 30
-  }
-}
-```
-
-### 7. Buscar Requisição por ID
-```http
-GET /api/v1/requests/123
-```
-
-**Resposta:**
-```json
-{
-  "success": true,
-  "data": {
-    "id": 123,
-    "text_formatted": "xxxx xxxxx mora na xxx xxx...",
-    "proccess_date": "2024-01-19T10:30:00"
-  }
-}
-```
-
-### 8. Buscar por Texto
-```http
-GET /api/v1/requests/search?q=empresa&limit=50
-```
-
-**Resposta:**
-```json
-{
-  "success": true,
-  "data": {
-    "results": [
-      {
-        "id": 456,
-        "text_formatted": "Texto que contém a palavra buscada...",
-        "proccess_date": "2024-01-19T10:30:00"
-      }
-    ],
-    "total": 15,
-    "query": "empresa"
-  }
-}
-```
-
-**📚 Documentação detalhada:** Veja `REQUESTS_API_DOCS.md` para exemplos completos e integração frontend.
-```http
-GET /api/v1/records/{process_uuid}?limit=100&skip=0
-```
-
-**Resposta:**
-```json
-{
-  "success": true,
-  "data": {
-    "records": [
-      {
-        "process_uuid": "550e8400-...",
-        "record_id": "0",
-        "mask_text": "João Silva, CPF 123.456.789-00",
-        "text_formatted": "xxxx xxxxx, xxx xxx.xxx.xxx-xx",
-        "pii_detected": {
-          "PERSON_NAME": 1,
-          "CPF": 1
-        },
-        "has_pii": true,
-        "processed_at": "2024-01-19T10:30:00"
-      }
-    ],
-    "total": 1000,
-    "limit": 100,
-    "skip": 0
-  }
-}
-```
-
-## 🗂️ Estrutura do Projeto
-
-```
-pii_api/
-├── app.py                      # Aplicação Flask principal
-├── config.py                   # Configurações centralizadas
-├── requirements.txt            # Dependências Python
-├── .env.example               # Exemplo de variáveis de ambiente
-├── README.md                  # Esta documentação
-│
-├── services/                  # Lógica de negócio
-│   ├── __init__.py
-│   ├── pii_detector.py       # Detector de PII com NLP
-│   ├── file_processor.py     # Processador CSV/TXT
-│   └── report_service.py     # Gerador de relatórios
-│
-├── database/                  # Camada de persistência
-│   ├── __init__.py
-│   └── mongo_service.py      # Operações MongoDB
-│
-├── utils/                     # Utilitários
-│   ├── __init__.py
-│   ├── validators.py         # Validadores de arquivo
-│   └── exceptions.py         # Exceções customizadas
-│
-└── uploads/                   # Diretório temporário (criado automaticamente)
-```
-
-## 📊 Estrutura de Dados MongoDB
-
-### Collection: `anonymized_data`
-```json
-{
-  "process_uuid": "550e8400-e29b-41d4-a716-446655440000",
-  "record_id": "0",
-  "original_id": 123,
-  "mask_text": "Texto original com dados sensíveis",
-  "text_formatted": "Texto anonimizado com dados xxxxxxxxxx",
-  "pii_detected": {
-    "CPF": 1,
-    "EMAIL": 1
-  },
-  "has_pii": true,
-  "processed_at": "2024-01-19T10:30:00"
-}
-```
-
-### Collection: `processing_reports`
-```json
-{
-  "process_uuid": "550e8400-e29b-41d4-a716-446655440000",
-  "created_at": "2024-01-19T10:30:00",
-  "file_info": { ... },
-  "processing_stats": { ... },
-  "pii_breakdown": [ ... ],
-  "risk_assessment": { ... },
-  "lgpd_compliance": { ... }
-}
-```
-
-## 🔐 Segurança e Compliance
-
-### LGPD (Lei Geral de Proteção de Dados)
-
-- ✅ **Minimização de Dados**: Apenas dados necessários são processados
-- ✅ **Anonimização**: Dados sensíveis são substituídos por máscaras
-- ✅ **Transparência**: Relatórios completos de processamento
-- ✅ **Rastreabilidade**: UUID único para cada processamento
-- ✅ **Não Armazenamento**: Dados originais não são mantidos
-
-### Análise de Risco Automática
-
-| Nível | Critério | Ações Recomendadas |
-|-------|----------|-------------------|
-| CRÍTICO | CPF, RG, Cartão detectados | Criptografia adicional, acesso restrito |
-| ALTO | E-mail, telefone em grande volume | Documentar consentimento |
-| MÉDIO | Nomes e localizações | Proteção adequada |
-| BAIXO | Poucos dados sensíveis | Manter boas práticas |
-
-## 🧪 Testes
-
+📁 Exemplo de estrutura esperada:
 ```bash
-# Executar testes
-pytest
-
-# Com cobertura
-pytest --cov=. --cov-report=html
+# Exemplo de csv
+Protocolo	Texto Mascarado
+12345	Solicito informações sobre João Silva, CPF 000.000.000-00...
 ```
+### 📤 Formato de Saída
 
-## 📝 Exemplo de Uso
+A saída do processamento ocorre via terminal, por meio de um dashboard textual, contendo:
 
-### Python
-```python
-import requests
+* 📊 Quantidade total de registros analisados
 
-# Upload de arquivo
-url = "http://localhost:5000/api/v1/upload"
-files = {'file': open('dados.csv', 'rb')}
-response = requests.post(url, files=files)
+* ⚠️ Quantidade de registros com dados pessoais identificados
 
-print(response.json())
-```
+* 📈 Taxa de incidência de PII
 
-### cURL
-```bash
-curl -X POST \
-  http://localhost:5000/api/v1/upload \
-  -F "file=@dados.csv"
-```
+* ⏱️ Tempo total de processamento
 
-### JavaScript (Frontend)
-```javascript
-const formData = new FormData();
-formData.append('file', fileInput.files[0]);
+* 🔍 Detalhamento por tipo de dado pessoal detectado, incluindo:
 
-fetch('http://localhost:5000/api/v1/upload', {
-  method: 'POST',
-  body: formData
-})
-.then(response => response.json())
-.then(data => console.log(data));
-```
+* CPF
 
-## 🐛 Troubleshooting
+* CNPJ
 
-### Erro: "Language model not found"
-```bash
-python -m spacy download pt_core_news_lg
-```
+* Telefones
 
-### Erro: MongoDB connection failed
-- Verificar se MongoDB está rodando
-- Validar MONGO_URI no .env
-- Testar conexão: `mongosh <MONGO_URI>`
+* E-mails
 
-### Erro: "File too large"
-- Ajustar MAX_FILE_SIZE no .env
-- Processar arquivo em lotes menores
+* Endereços
 
-## 🤝 Contribuindo
+* Registros Gerais (RG, CNH, NIS, PIS, etc.)
 
-1. Fork o projeto
-2. Crie uma branch: `git checkout -b feature/nova-funcionalidade`
-3. Commit suas mudanças: `git commit -m 'Add nova funcionalidade'`
-4. Push para a branch: `git push origin feature/nova-funcionalidade`
-5. Abra um Pull Request
+* Dados sensíveis (saúde, menor de idade, raça, gênero, contexto social)
 
-## 📄 Licença
+Além disso, o sistema realiza uma classificação automática de risco LGPD, podendo indicar:
 
-Este projeto está sob a licença MIT.
+**BAIXO**
 
-## 👥 Autores
+**ALTO**
 
-Sistema de Proteção LGPD - v1.0.0
+**CRÍTICO**
 
-## 📞 Suporte
-
-Para dúvidas ou problemas, abra uma issue no GitHub.
+Com base na presença de dados sensíveis ou identificadores oficiais em massa.
