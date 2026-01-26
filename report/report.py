@@ -5,6 +5,7 @@ Melhorias:
 - Log profissional e limpo
 - Regex de telefone blindado contra processos
 - Categoria 'Registros Gerais' (RG, NIS, PIS, CNH, etc)
+- Validação de contexto para telefones (evita falsos positivos)
 """
 import pandas as pd
 import spacy
@@ -94,11 +95,21 @@ class PIIDetector:
         except OSError:
             self.nlp = None
 
-        # Padrões de telefone (blindados contra processos)
+        # Padrões de telefone (blindados contra processos + validação de contexto)
         self.phone_patterns = [
-            r'\b(?:\(?[1-9]{2}\)?\s?)(?:9\s?\d|[2-5]\d)\d{2}[-.\s]\d{4}\b',
+            # 1. Formatado: (XX) 9XXXX-XXXX ou (XX) 3XXX-XXXX
+            r'\(([1-9]{2})\)\s?([9][0-9]{4}|[2-5][0-9]{3})-?[0-9]{4}\b',
+            
+            # 2. Semi-formatado: XX 9XXXX-XXXX  
+            r'\b([1-9]{2})\s([9][0-9]{4}|[2-5][0-9]{3})-[0-9]{4}\b',
+            
+            # 3. Celular Solto Estrito: DDD[1-9]{2} + 9 + 8 digitos (Total 11)
             r'\b[1-9]{2}9\d{8}\b',
+            
+            # 4. Fixo Solto Estrito: DDD[1-9]{2} + [2-5] + 7 digitos (Total 10)
             r'\b[1-9]{2}[2-5]\d{7}\b',
+
+            # 5. Contexto (Backup): Só aceita se tiver "tel/cel" antes
             r'(?i)(?:tel|cel|zap|whatsapp|contato|fone)[:\s\.]+\d{8,12}\b'
         ]
 
@@ -147,6 +158,28 @@ class PIIDetector:
         context = text[start:end].lower()
         
         return any(re.search(keyword, context, re.IGNORECASE) for keyword in self.CPF_CONTEXT_KEYWORDS)
+
+    def _is_near_pii_keyword(self, text: str, position: int, window: int = 30) -> bool:
+        """
+        Verifica se o número está próximo de palavras-chave de outros PIIs.
+        Retorna True se estiver perto de CPF, RG, CNPJ, etc (NÃO é telefone)
+        
+        IMPORTANTE: Ignora palavras de telefone (tel, contato, etc) para permitir
+        casos válidos como "Contato: (11) 98765-4321"
+        """
+        start = max(0, position - window)
+        end = min(len(text), position + window)
+        context = text[start:end].lower()
+        
+        # Lista REFINADA: apenas PIIs que NÃO são telefone
+        strict_pii_keywords = [
+            r'\bcpf\b', r'\bcnpj\b', r'\brg\b', r'\bcnh\b', r'\bnis\b', r'\bpis\b',
+            r'\bpasep\b', r'\bnit\b', r'\bctps\b', r'\bmatr[íi]cula\b',
+            r'\bt[íi]tulo\s+eleitor\b', r'\binscri[çc][ãa]o\b',
+            r'\bidentidade\b', r'\bdocumento\s+(?:de\s+)?identidade\b'
+        ]
+        
+        return any(re.search(keyword, context, re.IGNORECASE) for keyword in strict_pii_keywords)
 
     def _detect_cpf(self, text: str) -> List[Tuple[int, int, bool]]:
         """
@@ -211,9 +244,13 @@ class PIIDetector:
                     indices_to_mask.update(match_range)
                     pii_stats[pii_type] += 1
 
-        # 3. Telefones (regex estrito + Google lib)
+        # 3. Telefones (regex estrito + validação de contexto + Google lib)
         for pattern in self.phone_patterns:
             for match in re.finditer(pattern, text):
+                # NOVO: Valida se não está em contexto de outro PII
+                if self._is_near_pii_keyword(text, match.start()):
+                    continue  # Ignora: provavelmente é CPF/RG/CNPJ malformatado
+                
                 match_range = set(range(match.start(), match.end()))
                 if not match_range.intersection(indices_to_mask):
                     indices_to_mask.update(match_range)
@@ -222,6 +259,10 @@ class PIIDetector:
         try:
             for match in phonenumbers.PhoneNumberMatcher(text, "BR"):
                 if phonenumbers.is_valid_number(match.number):
+                    # NOVO: Valida contexto também para Google Phonenumbers
+                    if self._is_near_pii_keyword(text, match.start):
+                        continue
+                    
                     match_range = set(range(match.start, match.end))
                     if not match_range.intersection(indices_to_mask):
                         indices_to_mask.update(match_range)
