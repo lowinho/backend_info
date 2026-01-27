@@ -23,7 +23,10 @@ if sys.platform == "win32":
 
 
 # --- Configuração ---
-FILE_NAME = './files/amostra_validacao_lgpd_v2.csv'
+FILE_NAME = './files/AMOSTRA_e-SIC.xlsx'
+# FILE_NAME = './files/amostra_validacao_lgpd_v2.csv'
+# FILE_NAME = './files/amostra_validacao_lgpd.csv'
+# FILE_NAME = './files/amostra.csv'
 TARGET_COLUMN = 'Texto Mascarado'
 
 
