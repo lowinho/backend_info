@@ -74,7 +74,8 @@ def upload_file():
             total_records=result['total_records'],
             pii_statistics=result['pii_stats'],
             processing_time=result['processing_time'],
-            invalid_cpf_count=result.get('invalid_cpf_count', 0)  # NOVO: Campo opcional
+            invalid_cpf_count=result.get('invalid_cpf_count', 0),
+            records_with_pii_count=result.get('records_with_pii_count', 0) # <--- PASSANDO O VALOR CORRETO
         )
         
         # Garantir timestamp (compatibilidade)

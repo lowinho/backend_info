@@ -15,7 +15,8 @@ class ReportService:
         total_records: int,
         pii_statistics: Dict[str, int],
         processing_time: float,
-        invalid_cpf_count: int = 0  # NOVO: Parâmetro opcional
+        invalid_cpf_count: int = 0 , # NOVO: Parâmetro opcional
+        records_with_pii_count: int = None # <--- NOVO ARGUMENTO
     ) -> Dict:
         """
         Cria relatório completo de processamento
@@ -24,8 +25,16 @@ class ReportService:
         
         # Calcular totais
         total_pii_detected = sum(pii_statistics.values())
-        records_with_pii = sum(1 for count in pii_statistics.values() if count > 0)
+        # records_with_pii = sum(1 for count in pii_statistics.values() if count > 0)
         
+        # CORREÇÃO CRÍTICA:
+        # Se recebemos o count exato do processador, usamos ele.
+        # Se não, usamos o fallback (que era a lógica antiga, só por segurança)
+        if records_with_pii_count is not None:
+            records_with_pii = records_with_pii_count
+        else:
+            # Fallback antigo (incorreto, mas evita quebrar se faltar o parametro)
+            records_with_pii = sum(1 for count in pii_statistics.values() if count > 0)
         # Criar detalhamento por tipo de PII
         pii_breakdown = []
         for pii_type, count in sorted(pii_statistics.items(), key=lambda x: x[1], reverse=True):

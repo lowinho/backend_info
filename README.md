@@ -8,7 +8,7 @@ Toda a API foi desenvolvida para fins de automatização que permitem a  identif
 
 Esta seção descreve os **pré-requisitos**, **dependências** e o processo necessário para executar o backend da solução de análise de pedidos contendo dados pessoais ou sensíveis.
 
-### 1.1 Pré-requisitos
+### Pré-requisitos
 
 Antes de iniciar a aplicação, certifique-se de que os seguintes softwares estejam instalados no ambiente:
 
@@ -18,41 +18,75 @@ Antes de iniciar a aplicação, certifique-se de que os seguintes softwares este
   - Utilizado para armazenamento dos relatórios de análise
 - **Git** (opcional, para clonagem do repositório)
 
-> ℹ️ Recomenda-se o uso de um ambiente virtual (`venv`) para evitar conflitos entre dependências.
+## 📥 Início Rápido
 
----
-
+### 1. Clone o Repositório
 ```bash
-# Clone o Repositório
 git clone git@github.com:lowinho/backend_info.git
 ```
+### Entre na pasta do projeto
+```bash
+cd backend_info
+```
+## 🚀 Execução via Terminal (VENV)
+O projeto utiliza um arquivo **requirements.txt** para gerenciar todas as dependências, garantindo que o ambiente de execução seja idêntico ao de desenvolvimento.
 
-### 1.2 Instalação das Dependências
+* Criar e ativar o ambiente virtual (Recomendado)
+O uso de um ambiente virtual (VENV) evita conflitos entre as bibliotecas do seu sistema e as do projeto.
 
-O backend utiliza o arquivo `requirements.txt` para gerenciar todas as bibliotecas necessárias, permitindo a **instalação automatizada** do ambiente.
-
-#### Passo 1 – Criar e ativar o ambiente virtual (opcional, recomendado)
-
+### Criar o ambiente (Universal):
 ```bash
 python -m venv venv
 ```
-
-Ativar no Linux/Mac:
-
+### Ativar o ambiente:
+* No Linux / Mac:
 ```bash
 source venv/bin/activate
 ```
-
-Ativar no Windows:
-
+* No Windows:
 ```bash
-venv\Scripts\activate
+.\venv\Scripts\activate
 ```
-#### Passo 2 – Instalar as dependências
+### 2. Instalar as dependências
+Com o ambiente devidamente ativo, instale os pacotes necessários:
 ```bash
 pip install -r requirements.txt
 ```
-#### 1.3 Principais Dependências Utilizadas
+
+### 3. Baixar o modelo de IA (Processamento de Nomes)
+**ESTA ETAPA É OBRIGATÓRIA.** O sistema utiliza Processamento de Linguagem Natural (NLP) para identificar nomes próprios. Para isso, é necessário baixar o modelo treinado do SpaCy:
+```bash
+python -m spacy download pt_core_news_lg
+```
+**Nota:** Caso o comando acima falhe devido a restrições de rede ou firewall, instale diretamente via URL:
+```bash
+pip install https://github.com/explosion/spacy-models/releases/download/pt_core_news_lg-3.7.0/pt_core_news_lg-3.7.0-py3-none-any.whl
+```
+### 4. Rodar o Projeto
+Após a configuração, você pode executar os scripts principais de acordo com a sua necessidade:
+
+
+📍 Observação Importante: Por padrão, o script está configurado para ler o arquivo no caminho:
+```bash
+./files/AMOSTRA_e-SIC.xlsx.
+```
+Caso queira testar um arquivo diferente, você tem duas opções:
+
+* Colocar o seu arquivo na pasta ./files/ com o nome AMOSTRA_e-SIC.xlsx.
+
+* Abrir o arquivo report.py e alterar a variável FILE_NAME para o caminho do seu novo arquivo.
+### Para análise Standalone (Terminal):
+```bash
+# Entre na pasta report
+cd report
+# Execute o script
+python report.py
+```
+* **Para iniciar o servidor da API (Backend):**
+```bash
+python app.py
+```
+### 5. Principais Dependências Utilizadas
 
 As bibliotecas abaixo são utilizadas no backend, organizadas por finalidade:
 
@@ -88,29 +122,8 @@ As bibliotecas abaixo são utilizadas no backend, organizadas por finalidade:
 
 * **python-multipart** – Upload de arquivos via formulário
 
-## 🔧 Backend — Instruções de Execução
 
-Esta seção descreve como executar o processador Standalone de Detecção de Dados Pessoais (PII), bem como o formato de entrada e saída dos dados analisados.
-
-### 2. Instruções de Execução
-**a) Comandos para Execução**
-
-Após instalar todas as dependências e garantir que o ambiente esteja configurado corretamente, execute o script principal com o comando abaixo:
-```bash
-python main.py
-```
-
-**📌 Observação:**
-O script foi desenvolvido para execução standalone, sem necessidade de parâmetros via linha de comando.
-O arquivo de entrada é configurado diretamente no código pela variável:
-```bash
-FILE_NAME = './files/AMOSTRA_e-SIC.xlsx'
-```
-
-#### Caso deseje analisar outro arquivo, basta alterar esse caminho.
-
-**b) Formato dos Dados de Entrada e Saída
-📥**
+### 6. Formato dos Dados de Entrada e Saída 📥
 
 ### Formato de Entrada
 

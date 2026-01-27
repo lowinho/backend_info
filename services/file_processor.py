@@ -1,108 +1,94 @@
-"""
-File Processor - Atualizado para PIIDetector V10.0
-Compatível com frontend existente + rastreamento de CPFs inválidos
-"""
 import pandas as pd
 import time
-from typing import Dict, List
+from typing import Dict
 
 class FileProcessor:
-    """Processa arquivos e aplica detecção de PII"""
+    """
+    Processador V10.0 - Sincronizado com Terminal
+    """
     
+    # Lista de prioridade igual ao que você usaria no Terminal
+    TARGET_COLUMNS_PRIORITY = [
+        'texto mascarado', 'texto', 'conteudo', 'mensagem', 
+        'descricao', 'text', 'content', 'description'
+    ]
+
     def __init__(self, pii_detector):
         self.detector = pii_detector
     
-    def process_csv(self, filepath: str, process_uuid: str) -> Dict:
+    def _identify_text_column(self, df: pd.DataFrame) -> str:
         """
-        Processa arquivo CSV
-        Retorna estrutura compatível com API + dados de qualidade
+        Lógica Blindada de Seleção de Coluna:
+        1. Tenta encontrar nomes exatos da lista de prioridade.
+        2. Se não achar, pega a coluna de texto com maior média de caracteres (heurística).
         """
+        # Normaliza colunas do DF para minúsculo para comparar
+        df_cols_lower = {col.lower(): col for col in df.columns}
+        
+        # 1. Tentativa por nome (Prioridade)
+        for target in self.TARGET_COLUMNS_PRIORITY:
+            for col_lower, original_name in df_cols_lower.items():
+                if target in col_lower:
+                    print(f"[DEBUG] Coluna selecionada por nome: {original_name}")
+                    return original_name
+        
+        # 2. Tentativa por tamanho do conteúdo (Heurística)
+        best_col = None
+        max_avg_len = 0
+        
+        for col in df.columns:
+            if df[col].dtype == 'object': # Apenas colunas de texto
+                try:
+                    # Calcula média de tamanho ignorando nulos
+                    avg_len = df[col].astype(str).str.len().mean()
+                    if avg_len > max_avg_len:
+                        max_avg_len = avg_len
+                        best_col = col
+                except:
+                    continue
+        
+        if best_col:
+            print(f"[DEBUG] Coluna selecionada por tamanho: {best_col}")
+            return best_col
+            
+        # 3. Fallback final: primeira coluna
+        return df.columns[0]
+
+    def _process_dataframe(self, df: pd.DataFrame, process_uuid: str) -> Dict:
         start_time = time.time()
         
-        df = pd.read_csv(filepath)
-        total_records = len(df)
-        
-        # Identifica coluna de texto principal
+        # Identificação da coluna
         text_column = self._identify_text_column(df)
-        if not text_column:
-            raise ValueError("Nenhuma coluna de texto identificada")
-        
-        # Processamento com rastreamento de CPFs inválidos
-        records = []
-        pii_stats_global = {}
-        total_invalid_cpfs = 0  # NOVO: Rastreamento de CPFs inválidos
-        
-        for idx, row in df.iterrows():
-            original_text = str(row[text_column])
-            
-            # Aplica detecção (mantém compatibilidade)
-            redacted_text, pii_stats = self.detector.detect_and_redact(original_text)
-            
-            # NOVO: Captura CPFs inválidos da última execução
-            invalid_cpf_count = self.detector.get_last_invalid_cpf_count()
-            total_invalid_cpfs += invalid_cpf_count
-            
-            # Acumula estatísticas globais
-            for pii_type, count in pii_stats.items():
-                pii_stats_global[pii_type] = pii_stats_global.get(pii_type, 0) + count
-            
-            # Monta registro (estrutura original do frontend)
-            record = {
-                'process_uuid': process_uuid,
-                'record_id': idx + 1,
-                'original_text': original_text,
-                'redacted_text': redacted_text,
-                'pii_detected': pii_stats,
-                'has_pii': bool(pii_stats)
-            }
-            records.append(record)
-        
-        processing_time = time.time() - start_time
-        
-        # Retorna estrutura compatível + dados adicionais
-        return {
-            'process_uuid': process_uuid,
-            'total_records': total_records,
-            'records': records,
-            'pii_stats': pii_stats_global,
-            'processing_time': processing_time,
-            'invalid_cpf_count': total_invalid_cpfs  # NOVO: Campo adicional
-        }
-    
-    def process_txt(self, filepath: str, process_uuid: str) -> Dict:
-        """
-        Processa arquivo TXT (linha por linha)
-        """
-        start_time = time.time()
-        
-        with open(filepath, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
+        print(f"[INFO] Processando coluna: '{text_column}' | Total linhas: {len(df)}")
         
         records = []
         pii_stats_global = {}
         total_invalid_cpfs = 0
+        records_with_pii_count = 0  # <--- NOVO CONTADOR
         
-        for idx, line in enumerate(lines):
-            original_text = line.strip()
-            if not original_text:
-                continue
+        for idx, row in df.iterrows():
+            original_text = str(row[text_column]) if pd.notna(row[text_column]) else ""
             
-            redacted_text, pii_stats = self.detector.detect_and_redact(original_text)
-            invalid_cpf_count = self.detector.get_last_invalid_cpf_count()
-            total_invalid_cpfs += invalid_cpf_count
+            redacted_text, pii_stats, invalid_count = self.detector.detect_and_redact(original_text)
+            
+            total_invalid_cpfs += invalid_count
+            
+            # Se encontrou qualquer PII nesta linha, incrementa o contador de REGISTROS
+            if pii_stats:  # <--- LÓGICA CORRETA
+                records_with_pii_count += 1
             
             for pii_type, count in pii_stats.items():
                 pii_stats_global[pii_type] = pii_stats_global.get(pii_type, 0) + count
             
-            record = {
-                'process_uuid': process_uuid,
-                'record_id': idx + 1,
-                'original_text': original_text,
-                'redacted_text': redacted_text,
-                'pii_detected': pii_stats,
-                'has_pii': bool(pii_stats)
-            }
-            records.append(record)
+            if original_text.strip():
+                records.append({
+                    'process_uuid': process_uuid,
+                    'record_id': idx + 1,
+                    'original_text': original_text,
+                    'redacted_text': redacted_text,
+                    'pii_detected': pii_stats,
+                    'has_pii': bool(pii_stats)
+                })
         
         processing_time = time.time() - start_time
         
@@ -112,65 +98,25 @@ class FileProcessor:
             'records': records,
             'pii_stats': pii_stats_global,
             'processing_time': processing_time,
-            'invalid_cpf_count': total_invalid_cpfs
+            'invalid_cpf_count': total_invalid_cpfs,
+            'records_with_pii_count': records_with_pii_count # <--- RETORNA O VALOR REAL
         }
-    
+
+    def process_csv(self, filepath: str, process_uuid: str) -> Dict:
+        try:
+            df = pd.read_csv(filepath)
+        except:
+            df = pd.read_csv(filepath, encoding='latin1')
+        return self._process_dataframe(df, process_uuid)
+
     def process_excel(self, filepath: str, process_uuid: str) -> Dict:
-        """
-        Processa arquivo Excel (XLSX/XLS)
-        """
-        start_time = time.time()
-        
+        # Garante que lê Excel corretamente
         df = pd.read_excel(filepath)
-        total_records = len(df)
-        
-        text_column = self._identify_text_column(df)
-        if not text_column:
-            raise ValueError("Nenhuma coluna de texto identificada")
-        
-        records = []
-        pii_stats_global = {}
-        total_invalid_cpfs = 0
-        
-        for idx, row in df.iterrows():
-            original_text = str(row[text_column])
-            
-            redacted_text, pii_stats = self.detector.detect_and_redact(original_text)
-            invalid_cpf_count = self.detector.get_last_invalid_cpf_count()
-            total_invalid_cpfs += invalid_cpf_count
-            
-            for pii_type, count in pii_stats.items():
-                pii_stats_global[pii_type] = pii_stats_global.get(pii_type, 0) + count
-            
-            record = {
-                'process_uuid': process_uuid,
-                'record_id': idx + 1,
-                'original_text': original_text,
-                'redacted_text': redacted_text,
-                'pii_detected': pii_stats,
-                'has_pii': bool(pii_stats)
-            }
-            records.append(record)
-        
-        processing_time = time.time() - start_time
-        
-        return {
-            'process_uuid': process_uuid,
-            'total_records': total_records,
-            'records': records,
-            'pii_stats': pii_stats_global,
-            'processing_time': processing_time,
-            'invalid_cpf_count': total_invalid_cpfs
-        }
-    
-    def _identify_text_column(self, df: pd.DataFrame) -> str:
-        """
-        Identifica coluna principal de texto
-        Heurística: maior coluna com tipo object e média de caracteres > 20
-        """
-        for col in df.columns:
-            if df[col].dtype == 'object':
-                avg_length = df[col].astype(str).str.len().mean()
-                if avg_length > 20:
-                    return col
-        return None
+        return self._process_dataframe(df, process_uuid)
+
+    def process_txt(self, filepath: str, process_uuid: str) -> Dict:
+        # Lê TXT como DataFrame de uma coluna
+        with open(filepath, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        df = pd.DataFrame(lines, columns=['conteudo'])
+        return self._process_dataframe(df, process_uuid)
