@@ -28,6 +28,23 @@ git clone git@github.com:lowinho/backend_info.git
 ```bash
 cd backend_info
 ```
+## Execução via Docker (Docker Compose)
+
+**Pré-requisitos**
+
+Comando para Executar
+Abra o seu terminal na pasta do projeto e execute o seguinte comando:
+```bash
+docker compose up --build
+```
+O que este comando faz:
+
+* **--build:** Força o Docker a construir a imagem da sua API usando o Dockerfile (instala dependências, baixa o modelo do SpaCy, etc).
+
+* **up:** Sobe os containers do MongoDB e da API conectando-os na rede lgpd_network.
+
+Nota: Na primeira vez, isso pode demorar alguns minutos pois ele precisará baixar as imagens base e instalar as bibliotecas do Python.
+
 ## 🚀 Execução via Terminal (VENV)
 O projeto utiliza um arquivo **requirements.txt** para gerenciar todas as dependências, garantindo que o ambiente de execução seja idêntico ao de desenvolvimento.
 
