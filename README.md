@@ -4,48 +4,12 @@ O backend é responsável por **processar, analisar e classificar pedidos** (tex
 
 Toda a API foi desenvolvida para fins de automatização que permitem a  identificação de pedidos que podem ou não serem classificados como **público**.
 
-## ⚙️ Backend – Instruções de Instalação e Dependências
+## 🚀 Como Executar o Projeto
 
-Esta seção descreve os **pré-requisitos**, **dependências** e o processo necessário para executar o backend da solução de análise de pedidos contendo dados pessoais ou sensíveis.
+Você pode rodar o backend de duas formas: utilizando via **VENV** (Ambiente virtual Python) ou **DOCKER** (que já configura o banco de dados e a IA automaticamente - Para visualização com **frontend**).
 
-### Pré-requisitos
-
-Antes de iniciar a aplicação, certifique-se de que os seguintes softwares estejam instalados no ambiente:
-
-- **Python 3.9 ou superior**
-- **pip** (gerenciador de pacotes do Python)
-- **MongoDB** (local ou remoto)  
-  - Utilizado para armazenamento dos relatórios de análise
-- **Git** (opcional, para clonagem do repositório)
-
-## 📥 Início Rápido
-
-### 1. Clone o Repositório
-```bash
-git clone git@github.com:lowinho/backend_info.git
-```
-### Entre na pasta do projeto
-```bash
-cd backend_info
-```
-## Execução via Docker (Docker Compose)
-
-**Pré-requisitos**
-
-Comando para Executar
-Abra o seu terminal na pasta do projeto e execute o seguinte comando:
-```bash
-docker compose up --build
-```
-O que este comando faz:
-
-* **--build:** Força o Docker a construir a imagem da sua API usando o Dockerfile (instala dependências, baixa o modelo do SpaCy, etc).
-
-* **up:** Sobe os containers do MongoDB e da API conectando-os na rede lgpd_network.
-
-Nota: Na primeira vez, isso pode demorar alguns minutos pois ele precisará baixar as imagens base e instalar as bibliotecas do Python.
-
-## 🚀 Execução via Terminal (VENV)
+---
+### Opção 1 Execução via Terminal (VENV)
 O projeto utiliza um arquivo **requirements.txt** para gerenciar todas as dependências, garantindo que o ambiente de execução seja idêntico ao de desenvolvimento.
 
 * Criar e ativar o ambiente virtual (Recomendado)
@@ -72,10 +36,7 @@ pip install -r requirements.txt
 
 ### 3. Baixar o modelo de IA (Processamento de Nomes)
 **ESTA ETAPA É OBRIGATÓRIA.** O sistema utiliza Processamento de Linguagem Natural (NLP) para identificar nomes próprios. Para isso, é necessário baixar o modelo treinado do SpaCy:
-```bash
-python -m spacy download pt_core_news_lg
-```
-**Nota:** Caso o comando acima falhe devido a restrições de rede ou firewall, instale diretamente via URL:
+
 ```bash
 pip install https://github.com/explosion/spacy-models/releases/download/pt_core_news_lg-3.7.0/pt_core_news_lg-3.7.0-py3-none-any.whl
 ```
@@ -91,7 +52,7 @@ Caso queira testar um arquivo diferente, você tem duas opções:
 
 * Colocar o seu arquivo na pasta ./files/ com o nome AMOSTRA_e-SIC.xlsx.
 
-* Abrir o arquivo report.py e alterar a variável FILE_NAME para o caminho do seu novo arquivo.
+* Abrir o arquivo report.py na pasta report/ e alterar a variável FILE_NAME para o caminho do seu novo arquivo.
 ### Para análise Standalone (Terminal):
 ```bash
 # Entre na pasta report
@@ -99,48 +60,7 @@ cd report
 # Execute o script
 python report.py
 ```
-* **Para iniciar o servidor da API (Backend):**
-```bash
-python app.py
-```
-### 5. Principais Dependências Utilizadas
-
-As bibliotecas abaixo são utilizadas no backend, organizadas por finalidade:
-
-🌐 Framework da API
-
-* **Flask** – Framework web principal da API
-
-* **flask-cors** – Habilita comunicação entre frontend e backend
-
-* **python-dotenv** – Gerenciamento de variáveis de ambiente
-
-📊 Processamento de Dados
-
-* **pandas** – Leitura e manipulação de dados estruturados
-
-* **openpyxl** – Suporte a arquivos Excel (.xlsx)
-
-🧠 Detecção de Dados Pessoais (NLP)
-
-* **spaCy** – Processamento de linguagem natural para identificação de PII
-
-* **phonenumbers** – Validação e detecção de números telefônicos
-
-🗄️ Banco de Dados
-
-* **pymongo** – Integração com MongoDB
-
-🔐 Segurança e Utilidades
-
-* **cryptography** – Suporte a práticas de segurança e criptografia
-
-* **werkzeug** – Utilitários internos do Flask
-
-* **python-multipart** – Upload de arquivos via formulário
-
-
-### 6. Formato dos Dados de Entrada e Saída 📥
+### 5. Formato dos Dados de Entrada e Saída 📥
 
 ### Formato de Entrada
 
@@ -207,3 +127,69 @@ Além disso, o sistema realiza uma classificação automática de risco LGPD, po
 **CRÍTICO**
 
 Com base na presença de dados sensíveis ou identificadores oficiais em massa.
+
+### Opção 2: Via Docker (Recomendado para Integração com Frontend 🐳)
+
+
+---
+
+Esta opção utiliza **Docker Compose** para orquestrar a API Flask e o banco de dados MongoDB, permitindo que o Frontend se comunique perfeitamente com o backend.
+
+**Pré-requisitos:** Docker e Docker Compose instalados.
+
+1.  **Subir o ambiente:**
+    Na pasta raiz do projeto, execute:
+    ```bash
+    docker compose up --build
+    ```
+
+2.  **Serviços Iniciados:**
+    * **API Flask:** Rodando em `http://localhost:5000`
+    * **MongoDB:** Rodando na porta `27017`
+    * **Volumes:** Os dados do banco são persistidos em `mongodb_data` e os arquivos enviados ficam na pasta `./uploads`.
+
+3.  **Destaques da Configuração Docker:**
+    * **Multi-stage Build:** A imagem final é otimizada e leve, contendo apenas o necessário para a execução.
+    * **Auto-Healthcheck:** O container da API possui verificação automática de integridade.
+    * **Segurança:** A aplicação roda com um usuário não-root (`appuser`), seguindo boas práticas de segurança.
+    * **Hot Reload:** O volume montado em `.:/app` permite que alterações no código sejam refletidas em tempo real (em modo debug).
+
+E para visualização **(FRONTEND)** basta seguir as intruções do repositório abaixo:
+
+**[Repositório do Frontend](https://github.com/lowinho/frontend_info)**
+
+### Principais Dependências Utilizadas
+
+As bibliotecas abaixo são utilizadas no backend, organizadas por finalidade:
+
+🌐 Framework da API
+
+* **Flask** – Framework web principal da API
+
+* **flask-cors** – Habilita comunicação entre frontend e backend
+
+* **python-dotenv** – Gerenciamento de variáveis de ambiente
+
+📊 Processamento de Dados
+
+* **pandas** – Leitura e manipulação de dados estruturados
+
+* **openpyxl** – Suporte a arquivos Excel (.xlsx)
+
+🧠 Detecção de Dados Pessoais (NLP)
+
+* **spaCy** – Processamento de linguagem natural para identificação de PII
+
+* **phonenumbers** – Validação e detecção de números telefônicos
+
+🗄️ Banco de Dados
+
+* **pymongo** – Integração com MongoDB
+
+🔐 Segurança e Utilidades
+
+* **cryptography** – Suporte a práticas de segurança e criptografia
+
+* **werkzeug** – Utilitários internos do Flask
+
+* **python-multipart** – Upload de arquivos via formulário

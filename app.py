@@ -180,7 +180,7 @@ def get_process_records(process_uuid):
 
 
 if __name__ == '__main__':
-    print(f"🚀 API LGPD Iniciada na porta {app.config['PORT']}")
+    print(f"🚀 API de Análise de Pedidos Iniciada na porta {app.config['PORT']}")
     app.run(
         host=app.config['HOST'],
         port=app.config['PORT'],
