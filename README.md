@@ -118,16 +118,6 @@ A saída do processamento ocorre via terminal, por meio de um dashboard textual,
 
 * Dados sensíveis (saúde, menor de idade, raça, gênero, contexto social)
 
-Além disso, o sistema realiza uma classificação automática de risco LGPD, podendo indicar:
-
-**BAIXO**
-
-**ALTO**
-
-**CRÍTICO**
-
-Com base na presença de dados sensíveis ou identificadores oficiais em massa.
-
 ### Opção 2: Via Docker (Recomendado para Integração com Frontend 🐳)
 
 
