@@ -53,7 +53,7 @@ def main():
         sys.exit(1)
     
     print("=" * 60)
-    print("🔒 Processador de Dados Pessoais (LGPD)")
+    print("🔒 Processador de Dados Pessoais")
     print("=" * 60)
     print(f"📄 Arquivo: {args.file}")
     print(f"📊 Tipo: {file_ext.upper()}")
@@ -101,7 +101,7 @@ def main():
         
         print()
         print("=" * 60)
-        print("⚠️  ANÁLISE DE RISCO LGPD")
+        print("⚠️  ANÁLISE DE RISCO")
         print("=" * 60)
         print(f"Nível: {report['risk_assessment']['level']}")
         print(f"Descrição: {report['risk_assessment']['description']}")
