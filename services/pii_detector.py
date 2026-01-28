@@ -7,19 +7,23 @@ from typing import Tuple, Dict, List
 
 class PIIDetector:
     """
-    Detector de PII V13.0 (Context Aware) - Backend Service
-    Sincronizado com o script de terminal.
+    Detector de PII V14.0 (Backend Service)
+    Sincronizado com Script Standalone V14.0
     """
     
     PII_TYPES = {
         'PERSON_NAME': 'Nome de Pessoa',
         'CPF': 'Cadastro de Pessoa Física',
-        'CNPJ': 'Cadastro Nacional de Pessoa Jurídica',
+        'RG': 'Registro Geral (RG)',
+        'CNH': 'Carteira Nacional de Habilitação',
+        'MATRICULA': 'Matrícula Funcional',
+        'INSCRICAO': 'Inscrição (IPTU/Municipal)',
         'EMAIL': 'Endereço de E-mail',
         'PHONE': 'Número de Telefone',
         'FULL_ADDRESS': 'Endereço Completo',
         'CEP': 'Código de Endereçamento Postal',
-        'GENERAL_REGISTRY': 'Registros Gerais (RG/NIS/PIS/CNH)',
+        'CNPJ': 'Cadastro Nacional de Pessoa Jurídica',
+        'LEGAL_PROCESS': 'Número de Processo (Judicial/Admin)',
         'SENSITIVE_HEALTH': 'Dados de Saúde (Sensível)',
         'SENSITIVE_MINOR': 'Dados de Menor de Idade (Sensível)',
         'SENSITIVE_SOCIAL': 'Dados Sociais (Sensível)',
@@ -27,7 +31,6 @@ class PIIDetector:
         'SENSITIVE_GENDER': 'Dados de Gênero (Sensível)'
     }
 
-    # Base de conhecimento para validação de nomes (IBGE)
     COMMON_NAMES = {
         'maria', 'joao', 'ana', 'carlos', 'paulo', 'jose', 'lucas', 'pedro',
         'marcos', 'luiz', 'gabriel', 'rafael', 'francisco', 'marcelo', 'bruno',
@@ -41,7 +44,8 @@ class PIIDetector:
         'mauro', 'roberto', 'wellington', 'wallace', 'robson', 'cristiano',
         'geraldo', 'raimundo', 'sebastiao', 'miguel', 'arthur', 'heitor', 'bernardo',
         'davi', 'theo', 'lorenzo', 'gabriel', 'gael', 'bento', 'helena', 'laura',
-        'sophia', 'manuela', 'maite', 'liz', 'cecilia', 'elisa', 'maitê', 'eloá'
+        'sophia', 'manuela', 'maite', 'liz', 'cecilia', 'elisa', 'maitê', 'eloá',
+        'julio', 'cesar', 'augusto', 'vitoria', 'clara', 'breno', 'caio'
     }
 
     COMMON_SURNAMES = {
@@ -54,7 +58,8 @@ class PIIDetector:
         'barros', 'farias', 'cunha', 'reis', 'siqueira', 'moraes', 'castro',
         'batista', 'neves', 'rosa', 'medeiros', 'dantas', 'conceicao', 'braga',
         'filho', 'neto', 'junior', 'sobrinho', 'mota', 'vasconcelos', 'cruz',
-        'viana', 'peixoto', 'maia', 'monteiro', 'coelho', 'correia', 'brito'
+        'viana', 'peixoto', 'maia', 'monteiro', 'coelho', 'correia', 'brito',
+        'tavares', 'xavier', 'franco', 'maciel', 'sales'
     }
 
     CPF_CONTEXT_KEYWORDS = [
@@ -75,18 +80,20 @@ class PIIDetector:
             self.nlp = None
 
         self.phone_patterns = [
-            r'\b(?:\(?[1-9]{2}\)?\s?)(?:9\s?\d|[2-5]\d)\d{2}[-.\s]\d{4}\b',
-            r'\b[1-9]{2}9\d{8}\b',
-            r'\b[1-9]{2}[2-5]\d{7}\b',
+            r'\b(?:\(?\d{2}\)?\s?)(?:9\s?\d|[2-5]\d)\d{2}[-.\s]\d{4}\b',
             r'(?i)(?:tel|cel|zap|whatsapp|contato|fone)[:\s\.]+\d{8,12}\b'
         ]
 
         self.regex_patterns = {
+            'LEGAL_PROCESS': r'\b\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}\b|\b\d{4,5}\.\d{6}/\d{4}-\d{2}\b|\b\d{15,25}\b',
             'CNPJ': r'\b\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}\b',
             'EMAIL': r'\b[A-Za-z0-9._%+-]+@(?!.*\.gov\.br)[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
             'CEP': r'\b\d{5}\s*[-]\s*\d{3}\b', 
             'FULL_ADDRESS': r'(?i)\b(?:Rua|Av\.|Avenida|Q\.|Qd\.|Quadra|SQN|SQS|SHN|SHS|CLN|CRN|SRES|SHDF|Cond\.|Bloco|Bl\.|Lote|Lt\.|Conjunto|Conj\.|Arts|Al\.|Alameda)\s+[A-Za-z0-9\s,.-]{1,100}(?:(?:\b\d+|[A-Z]\b))',
-            'GENERAL_REGISTRY': r'(?i)(?:RG|CNH|Matr[íi]cula|NIS|PIS|PASEP|NIT|CTPS|IPTU|Inscri[çc][ãa]o|T[íi]tulo\s(?:de\s)?Eleitor)(?!\s*cpf)[:\s\.]+\d{1,15}[-\d]*|\b\d{3}\.\d{5}\.\d{2}-\d\b'
+            'MATRICULA': r'(?i)\b(?:Matr[íi]cula|Siape)[:\s\.]+(\d{1,10}[-.\s]?\d{0,2})\b',
+            'INSCRICAO': r'(?i)\b(?:Inscri[çc][ãa]o)[:\s\.]+(\d{1,15}[-.\s]?\d{0,2})\b',
+            'RG': r'(?i)(?:RG|R\.G\.|Identidade)[:\s\.]+(\d{1,2}\.?\d{3}\.?\d{3}[-.\s]?[\dX])\b',
+            'CNH': r'(?i)(?:CNH|Habilita[çc][ãa]o)[:\s\.]+(\d{9,11})\b',
         }
 
         self.sensitive_keywords = {
@@ -177,15 +184,18 @@ class PIIDetector:
         
         has_identifier = False
 
-        # 1. CPF
+        for match in re.finditer(self.regex_patterns['LEGAL_PROCESS'], text):
+            # Apenas para consumir a string e evitar colisão com telefone
+            pass 
+
         for start, end, is_valid in self._detect_cpf(text):
-            indices_to_mask.update(range(start, end))
-            pii_stats['CPF'] += 1
-            has_identifier = True
-            if not is_valid:
-                invalid_cpfs['CPF_INVALID'] += 1
+            if not set(range(start, end)).intersection(indices_to_mask):
+                indices_to_mask.update(range(start, end))
+                pii_stats['CPF'] += 1
+                has_identifier = True
+                if not is_valid:
+                    invalid_cpfs['CPF_INVALID'] += 1
         
-        # 2. Nomes (NLP)
         if self.nlp:
             try:
                 doc = self.nlp(text)
@@ -195,10 +205,9 @@ class PIIDetector:
                         clean_name = re.sub(r'[^\w\s]', '', name_candidate.lower())
                         parts = clean_name.split()
                         if len(parts) < 2: continue
-                        
+                        if "ltda" in clean_name or "advogados" in clean_name or "associados" in clean_name: continue
                         has_common = any(p in self.COMMON_NAMES or p in self.COMMON_SURNAMES for p in parts)
                         has_honor = re.search(r'(?i)\b(?:dr|dra|sr|sra)\.?\s', text[max(0, ent.start_char-5):ent.start_char])
-
                         if has_common or has_honor:
                             match_range = set(range(ent.start_char, ent.end_char))
                             if not match_range.intersection(indices_to_mask):
@@ -207,38 +216,47 @@ class PIIDetector:
                                 has_identifier = True
             except Exception:
                 pass
-
-        # 3. Registros Gerais (RG, etc)
-        for match in re.finditer(self.regex_patterns['GENERAL_REGISTRY'], text):
-            match_range = set(range(match.start(), match.end()))
+        
+        heuristic_name_pattern = r'(?i)(?:Sr\.|Sra\.|Servidor|Representante)[:\s]+([A-Z][a-z]+(?:\s[A-Z][a-z]+)+)'
+        for match in re.finditer(heuristic_name_pattern, text):
+            start, end = match.span(1)
+            match_range = set(range(start, end))
             if not match_range.intersection(indices_to_mask):
                 indices_to_mask.update(match_range)
-                pii_stats['GENERAL_REGISTRY'] += 1
+                pii_stats['PERSON_NAME'] += 1
                 has_identifier = True
 
-        # CNPJ
-        for match in re.finditer(self.regex_patterns['CNPJ'], text):
-            match_range = set(range(match.start(), match.end()))
-            if not match_range.intersection(indices_to_mask):
-                indices_to_mask.update(match_range)
-                pii_stats['CNPJ'] += 1
-
-        # Email / Endereço / Telefone / CEP
-        for pii_type in ['EMAIL', 'FULL_ADDRESS', 'CEP']:
-            if pii_type in self.regex_patterns:
-                for match in re.finditer(self.regex_patterns[pii_type], text):
-                    match_range = set(range(match.start(), match.end()))
+        for doc_type in ['MATRICULA', 'INSCRICAO', 'RG', 'CNH', 'CNPJ', 'CEP']:
+            if doc_type in self.regex_patterns:
+                for match in re.finditer(self.regex_patterns[doc_type], text):
+                    if match.groups():
+                        start, end = match.span(1)
+                    else:
+                        start, end = match.span()
+                    match_range = set(range(start, end))
                     if not match_range.intersection(indices_to_mask):
                         indices_to_mask.update(match_range)
-                        stats_key = 'FULL_ADDRESS' if pii_type == 'CEP' else pii_type
-                        pii_stats[stats_key] += 1
+                        pii_stats[doc_type] += 1
+                        if doc_type in ['RG', 'CNH', 'MATRICULA']:
+                            has_identifier = True
+
+        for pii_type in ['EMAIL', 'FULL_ADDRESS']:
+            for match in re.finditer(self.regex_patterns[pii_type], text):
+                match_range = set(range(match.start(), match.end()))
+                if not match_range.intersection(indices_to_mask):
+                    indices_to_mask.update(match_range)
+                    pii_stats[pii_type] += 1
 
         for pattern in self.phone_patterns:
             for match in re.finditer(pattern, text):
                 match_range = set(range(match.start(), match.end()))
-                if not match_range.intersection(indices_to_mask):
-                    indices_to_mask.update(match_range)
-                    pii_stats['PHONE'] += 1
+                if match_range.intersection(indices_to_mask): continue
+                phone_candidate = match.group()
+                digits_only = re.sub(r'\D', '', phone_candidate)
+                if len(digits_only) == 11 and digits_only.startswith(('0', '1', '2', '3', '4', '5', '6', '7', '8', '9')):
+                     pass # Evita conflito com CNH/CPF
+                indices_to_mask.update(match_range)
+                pii_stats['PHONE'] += 1
 
         try:
             for match in phonenumbers.PhoneNumberMatcher(text, "BR"):
@@ -250,7 +268,6 @@ class PIIDetector:
         except Exception:
             pass
 
-        # Contextual Sensitive Data
         for sens_type, keywords in self.sensitive_keywords.items():
             for kw in keywords:
                 for match in re.finditer(kw, text, re.IGNORECASE):
