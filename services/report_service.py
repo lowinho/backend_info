@@ -3,7 +3,7 @@ from typing import Dict
 
 class ReportService:
     """
-    Report Service V14.0 - Atualizado com novas categorias de PII
+    Report Service V15.4
     """
     
     @staticmethod
@@ -98,13 +98,11 @@ class ReportService:
     
     @staticmethod
     def _calculate_risk_level(pii_stats: Dict[str, int], total_records: int) -> str:
-        # ATUALIZADO V14: RG, CNH, MATRICULA são críticos
         critical_pii = {
             'CPF', 'RG', 'CNH', 'MATRICULA', 
             'SENSITIVE_HEALTH', 'SENSITIVE_MINOR', 'SENSITIVE_SOCIAL', 
             'SENSITIVE_RACE', 'SENSITIVE_GENDER'
         }
-        
         high_risk_pii = {
             'EMAIL', 'PHONE', 'FULL_ADDRESS', 'INSCRICAO'
         }
@@ -115,7 +113,7 @@ class ReportService:
         if critical_count > 0:
             return 'CRÍTICO'
         elif high_count > 0:
-            return 'MODERADO' # Mudamos de ALTO/MÉDIO para alinhar com o Hackathon
+            return 'MODERADO'
         elif sum(pii_stats.values()) > 0:
             return 'BAIXO'
         else:
