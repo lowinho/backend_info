@@ -1,10 +1,14 @@
 """
-Processador Standalone de PII - V14.0 (CORREÇÃO FINA)
-Correções baseadas na auditoria manual:
-1. Separação de Matrícula, Inscrição, RG e CNH em categorias próprias.
-2. Identificação de Processos Judiciais (NUP) para evitar confusão com Telefone.
-3. Blindagem do Regex de Telefone contra CNH e números longos.
-4. Heurística extra para captura de nomes (Sr., Sra., Servidor).
+Processador Standalone de PII - V20.0 (PLATINUM EDITION)
+Correções Cirúrgicas:
+1. NOMES: Blacklist expandida para órgãos (Sociedade, Museu, Coordenação).
+2. ENDEREÇOS: 
+   - Ignora 'Setor' se seguido de siglas administrativas (NUDE, SEI, GAB).
+   - Lógica de MESCLAGEM: 'Área Delta' + 'Lt 105' agora contam como 1 único endereço.
+3. TELEFONE: 
+   - Regex de Processo atualizado para o formato exato '0315-000009878/2023-15'.
+   - Verificação de borda: Telefone não pode ter '/' ou '-' antes ou depois.
+4. DEDUPLICAÇÃO INTELIGENTE: PIIs adjacentes são fundidos na contagem.
 """
 import pandas as pd
 import spacy
@@ -17,41 +21,31 @@ from typing import Dict, Tuple, List
 from datetime import datetime
 import sys
 
-# Habilita cores ANSI no Windows
 if sys.platform == "win32":
     os.system("")
 
 # --- Configuração ---
 FILE_NAME = './files/AMOSTRA_e-SIC.xlsx'
-# # FILE_NAME = './files/amostra_validacao_lgpd_v2.csv'
-# # FILE_NAME = './files/amostra_validacao_lgpd.csv'
-# # FILE_NAME = './files/amostra.csv'
 TARGET_COLUMN = 'Texto Mascarado'
 
 
 class PIIDetector:
-    """Detector de PII V14.0 - Refinado"""
+    """Detector de PII V20.0 - Platinum Logic"""
     
     PII_TYPES = {
-        # Identificadores Pessoais
         'PERSON_NAME': 'Nome de Pessoa',
         'CPF': 'Cadastro de Pessoa Física',
-        'RG': 'Registro Geral (RG)',                # Separado
-        'CNH': 'Carteira Nacional de Habilitação',  # Separado
-        'MATRICULA': 'Matrícula Funcional',         # Separado
-        'INSCRICAO': 'Inscrição (IPTU/Municipal)',  # Separado
-        
-        # Dados de Contato e Localização
+        'RG': 'Registro Geral (RG)',
+        'CNH': 'Carteira Nacional de Habilitação',
+        'MATRICULA': 'Matrícula Funcional',
+        'INSCRICAO': 'Inscrição (IPTU/Municipal)',
         'EMAIL': 'Endereço de E-mail',
         'PHONE': 'Número de Telefone',
         'FULL_ADDRESS': 'Endereço Completo',
         'CEP': 'Código de Endereçamento Postal',
-        
-        # Dados Corporativos (Geralmente Públicos, mas detectados)
         'CNPJ': 'Cadastro Nacional de Pessoa Jurídica',
-        'LEGAL_PROCESS': 'Número de Processo (Judicial/Admin)', # Novo (para evitar falso positivo de tel)
-
-        # Dados Sensíveis
+        'LEGAL_PROCESS': 'Número de Processo', 
+        'PROTOCOL': 'Número de Protocolo',     
         'SENSITIVE_HEALTH': 'Dados de Saúde (Sensível)',
         'SENSITIVE_MINOR': 'Dados de Menor de Idade (Sensível)',
         'SENSITIVE_SOCIAL': 'Dados Sociais (Sensível)',
@@ -59,36 +53,31 @@ class PIIDetector:
         'SENSITIVE_GENDER': 'Dados de Gênero (Sensível)'
     }
 
-    # Base de conhecimento para validação de nomes (IBGE)
-    COMMON_NAMES = {
-        'maria', 'joao', 'ana', 'carlos', 'paulo', 'jose', 'lucas', 'pedro',
-        'marcos', 'luiz', 'gabriel', 'rafael', 'francisco', 'marcelo', 'bruno',
-        'felipe', 'guilherme', 'rodrigo', 'antonio', 'mateus', 'andre', 'fernando',
-        'fabio', 'leonardo', 'gustavo', 'juliana', 'patricia', 'aline', 'camila',
-        'bruna', 'jessica', 'leticia', 'julia', 'luciana', 'amanda', 'mariana',
-        'vanessa', 'alice', 'beatriz', 'larissa', 'debora', 'claudia', 'carol',
-        'carolina', 'sandra', 'regina', 'roberta', 'edson', 'sergio', 'vitor',
-        'thiago', 'alexandre', 'eduardo', 'daniel', 'renato', 'ricardo', 'jorge',
-        'samuel', 'diego', 'leandro', 'tiago', 'anderson', 'claudio', 'marcio',
-        'mauro', 'roberto', 'wellington', 'wallace', 'robson', 'cristiano',
-        'geraldo', 'raimundo', 'sebastiao', 'miguel', 'arthur', 'heitor', 'bernardo',
-        'davi', 'theo', 'lorenzo', 'gabriel', 'gael', 'bento', 'helena', 'laura',
-        'sophia', 'manuela', 'maite', 'liz', 'cecilia', 'elisa', 'maitê', 'eloá',
-        'julio', 'cesar', 'augusto', 'vitoria', 'clara', 'breno', 'caio'
+    # Blacklist Agressiva (Resolve Caso 19 e 54)
+    NAME_BLACKLIST = {
+        'secretaria', 'secretario', 'departamento', 'gerencia', 'ministerio', 'tribunal', 
+        'vara', 'promotoria', 'defensoria', 'conselho', 'associacao', 'sindicato', 'instituto',
+        'der', 'der-df', 'pmdf', 'cbmdf', 'ssp', 'sedf', 'ses', 'terracap', 'novacap',
+        'caesb', 'neoenergia', 'detran', 'inss', 'receita', 'federal', 'distrito', 'procon',
+        'gestor', 'ppgg', 'empresa', 'ltda', 'sa', 's/a', 'me', 'epp', 'inc', 'group',
+        'consórcio', 'fundação', 'banco', 'caixa', 'hospital', 'clinica', 'universidade',
+        'escola', 'faculdade', 'colegio', 'sistema', 'serviço', 'programa', 'projeto',
+        'termo', 'acordo', 'cooperação', 'edital', 'concurso', 'curso', 'mestrado', 'doutorado',
+        'cj', 'saúde', 'imobiliária', 'atividade', 'defesa', 'consumidor', 'fiscal',
+        'venda', 'imóvel', 'monitoramento', 'ocorrência', 'carta', 'precatória',
+        'sociedade', 'transportes', 'coletivos', 'museu', 'coordenação', 'pessoas', 'tcb',
+        'estratégias', 'consolidação', 'melhoria', 'arquivologista', 'bolsista', 'prezados'
+    }
+
+    # Blacklist de Endereços (Resolve Caso 81 e 22)
+    ADDRESS_BLACKLIST = {
+        'tic', 'tecnologia', 'pessoal', 'recursos', 'humanos', 'financeiro', 'contas',
+        'governanca', 'dados', 'sistemas', 'infraestrutura', 'banco', 'delta', 'administrativa',
+        'nude', 'sei', 'gab', 'protocolo', 'juridico'
     }
 
     COMMON_SURNAMES = {
-        'silva', 'santos', 'oliveira', 'souza', 'rodrigues', 'ferreira', 'alves',
-        'pereira', 'lima', 'gomes', 'costa', 'ribeiro', 'martins', 'carvalho',
-        'almeida', 'lopes', 'soares', 'fernandes', 'vieira', 'barbosa', 'rocha',
-        'dias', 'nascimento', 'andrade', 'moreira', 'nunes', 'marques', 'machado',
-        'mendes', 'freitas', 'cardoso', 'ramos', 'goncalves', 'santana', 'teixeira',
-        'cavalcanti', 'moura', 'campos', 'jesus', 'pinto', 'araujo', 'leite',
-        'barros', 'farias', 'cunha', 'reis', 'siqueira', 'moraes', 'castro',
-        'batista', 'neves', 'rosa', 'medeiros', 'dantas', 'conceicao', 'braga',
-        'filho', 'neto', 'junior', 'sobrinho', 'mota', 'vasconcelos', 'cruz',
-        'viana', 'peixoto', 'maia', 'monteiro', 'coelho', 'correia', 'brito',
-        'tavares', 'xavier', 'franco', 'maciel', 'sales'
+        'silva', 'santos', 'oliveira', 'souza', 'rodrigues', 'ferreira', 'alves', 'pereira', 'lima', 'gomes', 'costa', 'ribeiro', 'martins', 'carvalho', 'almeida', 'lopes', 'soares', 'fernandes', 'vieira', 'barbosa', 'rocha', 'dias', 'nascimento', 'andrade', 'moreira', 'nunes', 'marques', 'machado', 'mendes', 'freitas', 'cardoso', 'ramos', 'goncalves', 'santana', 'teixeira', 'cavalcanti', 'moura', 'campos', 'jesus', 'pinto', 'araujo', 'leite', 'barros', 'farias', 'cunha', 'reis', 'siqueira', 'moraes', 'castro', 'batista', 'neves', 'rosa', 'medeiros', 'dantas', 'conceicao', 'braga', 'filho', 'neto', 'junior', 'sobrinho', 'mota', 'vasconcelos', 'cruz', 'viana', 'peixoto', 'maia', 'monteiro', 'coelho', 'correia', 'brito', 'tavares', 'xavier', 'franco', 'maciel', 'sales', 'vasconcelos', 'cruz', 'dias', 'guimarães', 'neves', 'garcia', 'valle', 'simoes', 'barbosa', 'camargo', 'ribeiro', 'lopes'
     }
 
     CPF_CONTEXT_KEYWORDS = [
@@ -108,87 +97,45 @@ class PIIDetector:
         except OSError:
             self.nlp = None
 
-        # Regex de Telefone mais restritivo para não pegar números aleatórios
-        self.phone_patterns = [
-            # Formato (XX) XXXXX-XXXX
-            r'\b(?:\(?\d{2}\)?\s?)(?:9\s?\d|[2-5]\d)\d{2}[-.\s]\d{4}\b',
-            # Com contexto explícito (Tel: XXXXXXXX)
-            r'(?i)(?:tel|cel|zap|whatsapp|contato|fone)[:\s\.]+\d{8,12}\b'
-        ]
-
         self.regex_patterns = {
-            # Processos Judiciais (CNJ ou Antigos) - Pega isso ANTES de telefone
-            'LEGAL_PROCESS': r'\b\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}\b|\b\d{4,5}\.\d{6}/\d{4}-\d{2}\b|\b\d{15,25}\b',
-            
+            # --- BLINDAGEM ---
+            # Atualizado para pegar o caso 28 e 34: 0315-000009878/2023-15 e 02305-85265475/2023-55
+            'LEGAL_PROCESS': r'\b\d{4,5}[-.]\d{8,10}[/.]\d{4}[-.]\d{2}\b|\b\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}\b|\b\d{20}\b',
+            'PROTOCOL': r'\b(?:LAI|PROTOCOLO|OUVIDORIA|SEI|INSCRI[ÇC][ÃA]O IMOBILI[ÁA]RIA|EMPENHO)[-:\s.]+\d{1,15}[-./]?\d{0,10}[-./]?\d{0,4}\b',
+            'PROPERTY_REG': r'(?i)(?:inscri[çc][ãa]o imobili[áa]ria|im[óo]vel|matr[íi]cula do im[óo]vel)[\snº\.:]+(\d+)',
+
             'CNPJ': r'\b\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}\b',
             'EMAIL': r'\b[A-Za-z0-9._%+-]+@(?!.*\.gov\.br)[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
             'CEP': r'\b\d{5}\s*[-]\s*\d{3}\b', 
             
-            # Endereço
-            'FULL_ADDRESS': r'(?i)\b(?:Rua|Av\.|Avenida|Q\.|Qd\.|Quadra|SQN|SQS|SHN|SHS|CLN|CRN|SRES|SHDF|Cond\.|Bloco|Bl\.|Lote|Lt\.|Conjunto|Conj\.|Arts|Al\.|Alameda)\s+[A-Za-z0-9\s,.-]{1,100}(?:(?:\b\d+|[A-Z]\b))',
+            # Endereço: Lookahead negativo para 'Setor NUDE', 'Area Delta' (se for admin)
+            'FULL_ADDRESS': r'(?i)\b(?:Rua|Av\.|Avenida|Q\.|Qd\.|Quadra|SQN|SQS|SHN|SHS|CLN|CRN|SRES|SHDF|Cond\.|Bloco|Bl\.|Lote|Lt\.|Conjunto|Conj\.|Arts|Al\.|Alameda|(?:Setor|Área)(?!\s+(?:de\s+)?(?:TIC|Tecnologia|Saúde|Pessoal|Gestão|Governança|NUDE|DER|GAB|Protocolo)))\s+[A-Za-z0-9\s,.-]{1,100}(?:(?:\b\d+|[A-Z]\b))',
             
-            # --- DOCUMENTOS ESPECÍFICOS (SEPARADOS) ---
-            # Matrícula: busca explícita pela palavra
-            'MATRICULA': r'(?i)\b(?:Matr[íi]cula|Siape)[:\s\.]+(\d{1,10}[-.\s]?\d{0,2})\b',
-            
-            # Inscrição: busca explícita
-            'INSCRICAO': r'(?i)\b(?:Inscri[çc][ãa]o)[:\s\.]+(\d{1,15}[-.\s]?\d{0,2})\b',
-            
-            # RG: busca explícita ou formato típico
+            'MATRICULA': r'(?i)\b(?:Matr[íi]cula|Siape)(?!\s+do im[óo]vel)[:\s\.]+(\w{1,15}[-.\s]?\w{0,2})\b',
+            'INSCRICAO': r'(?i)\b(?:Inscri[çc][ãa]o)(?!\s+imobili[áa]ria)[:\s\.]+(\d{1,15}[-.\s]?\d{0,2})\b',
             'RG': r'(?i)(?:RG|R\.G\.|Identidade)[:\s\.]+(\d{1,2}\.?\d{3}\.?\d{3}[-.\s]?[\dX])\b',
-            
-            # CNH: busca explícita ou 11 digitos perto de CNH/Habilitação
             'CNH': r'(?i)(?:CNH|Habilita[çc][ãa]o)[:\s\.]+(\d{9,11})\b',
         }
 
         self.sensitive_keywords = {
             'SENSITIVE_HEALTH': [
-                r'\bdiagn[oó]stico d[eo]\b', 
-                r'\bportador d[eo] (?:c[âa]ncer|hiv|aids|defici[êe]ncia)\b',
-                r'\bminha doen[çc]a\b', 
-                r'\blaudo m[ée]dico\b', 
-                r'\bCID\s?[A-Z]\d', 
-                r'\btranstorno (?:mental|bipolar|ansiedade)\b',
-                r'\bexame d[eo] (?:sangue|dna|bi[óo]psia)\b',
-                r'\bsofria de\b',
-                r'\bpaciente com\b'
+                r'\bdiagn[oó]stico d[eo]\b', r'\bportador d[eo] (?:c[âa]ncer|hiv|aids|defici[êe]ncia)\b',
+                r'\bminha doen[çc]a\b', r'\blaudo m[ée]dico\b', r'\bCID\s?[A-Z]\d', 
+                r'\btranstorno (?:mental|bipolar|ansiedade)\b', r'\bexame d[eo] (?:sangue|dna|bi[óo]psia)\b',
+                r'\bsofria de\b', r'\bpaciente com\b', r'\basm[áa]tic[oa]\b'
             ],
-            'SENSITIVE_MINOR': [
-                r'\bmenor de idade\b', 
-                r'\btutela d[eo] menor\b', 
-                r'\bguarda d[oa] crian[çc]a\b',
-                r'\bfilh[oa] menor\b',
-                r'\badolescente infrator\b',
-                r'\bcertid[ãa]o de nascimento\b',
-                r'\bconselho tutelar\b'
-            ],
-            'SENSITIVE_SOCIAL': [
-                r'\bvulnerabilidade social\b', 
-                r'\bbenefici[áa]rio do (?:bolsa|aux[íi]lio)\b', 
-                r'\brecebe cesta b[áa]sica\b', 
-                r'\bcad[úu]nico\b'
-            ],
-            'SENSITIVE_RACE': [
-                r'\bautodeclara[çc][ãa]o de cor\b', 
-                r'\bcor d[ae] pele\b', 
-                r'\bquesito raça\b'
-            ],
-            'SENSITIVE_GENDER': [
-                r'\bnome social\b', 
-                r'\bcirurgia de redesigna[çc][ãa]o\b', 
-                r'\bidentidade de g[êe]nero\b'
-            ]
+            'SENSITIVE_MINOR': [r'\bmenor de idade\b', r'\btutela d[eo] menor\b', r'\bguarda d[oa] crian[çc]a\b', r'\bfilh[oa] menor\b', r'\bcertid[ãa]o de nascimento\b', r'\bconselho tutelar\b', r'\balun[ao]\b'],
+            'SENSITIVE_SOCIAL': [r'\bvulnerabilidade social\b', r'\bbenefici[áa]rio do (?:bolsa|aux[íi]lio)\b', r'\brecebe cesta b[áa]sica\b'],
+            'SENSITIVE_RACE': [r'\bautodeclara[çc][ãa]o de cor\b', r'\bcor d[ae] pele\b', r'\bquesito raça\b'],
+            'SENSITIVE_GENDER': [r'\bnome social\b', r'\bcirurgia de redesigna[çc][ãa]o\b', r'\bidentidade de g[êe]nero\b']
         }
 
     def _validate_cpf_digit(self, cpf: str) -> bool:
-        if len(cpf) != 11 or not cpf.isdigit():
-            return False
-        if cpf == cpf[0] * 11:
-            return False
+        if len(cpf) != 11 or not cpf.isdigit(): return False
+        if cpf == cpf[0] * 11: return False
         soma = sum(int(cpf[i]) * (10 - i) for i in range(9))
         digito1 = (soma * 10 % 11) % 10
-        if digito1 != int(cpf[9]):
-            return False
+        if digito1 != int(cpf[9]): return False
         soma = sum(int(cpf[i]) * (11 - i) for i in range(10))
         digito2 = (soma * 10 % 11) % 10
         return digito2 == int(cpf[10])
@@ -210,8 +157,7 @@ class PIIDetector:
             detected_positions.update(range(match.start(), match.end()))
         loose_pattern = r'\b\d{11}\b'
         for match in re.finditer(loose_pattern, text):
-            if any(pos in detected_positions for pos in range(match.start(), match.end())):
-                continue
+            if any(pos in detected_positions for pos in range(match.start(), match.end())): continue
             if self._has_cpf_context(text, match.start()):
                 cpf_candidate = match.group()
                 is_valid = self._validate_cpf_digit(cpf_candidate)
@@ -224,139 +170,167 @@ class PIIDetector:
             return text, {}, {}
         
         indices_to_mask = set()
+        protected_indices = set()
         pii_stats = defaultdict(int)
         invalid_cpfs = defaultdict(int)
         
+        # Estrutura para mesclagem: lista de (start, end, type)
+        detected_items = [] 
+        
         has_identifier = False
 
-        # --- 1. PROCESSO JUDICIAL (Prioridade Máxima para não confundir com telefone) ---
-        for match in re.finditer(self.regex_patterns['LEGAL_PROCESS'], text):
-            # Se for processo, a gente mascara (ou não, dependendo da regra), 
-            # mas o principal é remover da fila para não ser pego como telefone.
-            # Aqui vamos assumir que número de processo é PÚBLICO, então não mascaramos,
-            # mas adicionamos aos indices_to_mask para "proteger" de ser pego pelo telefone
-            # OU mascaramos se a regra for esconder. Vamos assumir que mascara para garantir.
-            
-            # Se quiser mascarar:
-            # match_range = set(range(match.start(), match.end()))
-            # indices_to_mask.update(match_range)
-            # pii_stats['LEGAL_PROCESS'] += 1
-            
-            # Se quiser apenas evitar falso positivo de telefone (TRATAMENTO #55):
-            # Adicionamos aos indices mas NÃO contamos como PII sensível se for público.
-            pass 
-
+        # --- 1. BLINDAGEM ---
+        for blind_type in ['LEGAL_PROCESS', 'PROTOCOL', 'PROPERTY_REG']:
+            for match in re.finditer(self.regex_patterns[blind_type], text):
+                protected_indices.update(range(match.start(), match.end()))
+                
         # --- 2. CPF ---
         for start, end, is_valid in self._detect_cpf(text):
-            if not set(range(start, end)).intersection(indices_to_mask):
+            if not protected_indices.intersection(range(start, end)):
                 indices_to_mask.update(range(start, end))
-                pii_stats['CPF'] += 1
+                detected_items.append((start, end, 'CPF'))
                 has_identifier = True
                 if not is_valid:
                     invalid_cpfs['CPF_INVALID'] += 1
+
+        # --- 3. NOMES (Gatilhos + IA + Regex) ---
+        detected_names_ranges = set()
         
-        # --- 3. NOMES (Com Heurística Extra) ---
-        # Spacy
+        # 3.1 Gatilhos
+        trigger_pattern = r'(?i)(?:Nome|Representante|Pai|Mãe|Orientador|Professor|Prof\.|Dr\.|Dra\.|Contat(?:o|ar)|Sr\.|Sra\.|Servidor|Alun[ao])[:\s]+((?:[A-Z][a-zÀ-ÿ]+\s*){2,})'
+        for match in re.finditer(trigger_pattern, text):
+            start_name, end_name = match.span(1)
+            name_text = match.group(1).strip().lower()
+            if any(b in name_text for b in self.NAME_BLACKLIST): continue
+            
+            if not protected_indices.intersection(range(start_name, end_name)):
+                if not set(range(start_name, end_name)).intersection(indices_to_mask):
+                    indices_to_mask.update(range(start_name, end_name))
+                    detected_names_ranges.update(range(start_name, end_name))
+                    detected_items.append((start_name, end_name, 'PERSON_NAME'))
+                    has_identifier = True
+
+        # 3.2 SpaCy
         if self.nlp:
             try:
                 doc = self.nlp(text)
                 for ent in doc.ents:
                     if ent.label_ == "PER":
-                        name_candidate = ent.text.strip()
-                        # Validação básica de nome
-                        clean_name = re.sub(r'[^\w\s]', '', name_candidate.lower())
-                        parts = clean_name.split()
-                        if len(parts) < 2: continue
-                        
-                        # Filtro de falsos positivos (Ex: nomes de escritórios que o Spacy pega)
-                        if "ltda" in clean_name or "advogados" in clean_name or "associados" in clean_name:
-                            continue
-
-                        has_common = any(p in self.COMMON_NAMES or p in self.COMMON_SURNAMES for p in parts)
-                        has_honor = re.search(r'(?i)\b(?:dr|dra|sr|sra)\.?\s', text[max(0, ent.start_char-5):ent.start_char])
-
-                        if has_common or has_honor:
-                            match_range = set(range(ent.start_char, ent.end_char))
-                            if not match_range.intersection(indices_to_mask):
-                                indices_to_mask.update(match_range)
-                                pii_stats['PERSON_NAME'] += 1
-                                has_identifier = True
+                        if not protected_indices.intersection(range(ent.start_char, ent.end_char)):
+                            if not set(range(ent.start_char, ent.end_char)).intersection(detected_names_ranges):
+                                name_text = ent.text.strip().lower()
+                                if any(b in name_text for b in self.NAME_BLACKLIST): continue
+                                if ent.text.isupper() and len(ent.text) < 10: continue
+                                clean_name = re.sub(r'[^\w\s]', '', name_text)
+                                parts = clean_name.split()
+                                if len(parts) < 2: continue
+                                if "ltda" in clean_name or "advogados" in clean_name: continue
+                                has_common = any(p in self.COMMON_SURNAMES for p in parts)
+                                has_honor = re.search(r'(?i)\b(?:dr|dra|sr|sra)\.?\s', text[max(0, ent.start_char-5):ent.start_char])
+                                if has_common or has_honor:
+                                    indices_to_mask.update(range(ent.start_char, ent.end_char))
+                                    detected_names_ranges.update(range(ent.start_char, ent.end_char))
+                                    detected_items.append((ent.start_char, ent.end_char, 'PERSON_NAME'))
+                                    has_identifier = True
             except Exception:
                 pass
-        
-        # Heurística Regex para nomes (Pega o que o Spacy perdeu: "Sr. João", "Servidor Fulano")
-        heuristic_name_pattern = r'(?i)(?:Sr\.|Sra\.|Servidor|Representante)[:\s]+([A-Z][a-z]+(?:\s[A-Z][a-z]+)+)'
-        for match in re.finditer(heuristic_name_pattern, text):
-            # Grupo 1 é o nome
-            start, end = match.span(1)
-            match_range = set(range(start, end))
-            if not match_range.intersection(indices_to_mask):
-                indices_to_mask.update(match_range)
-                pii_stats['PERSON_NAME'] += 1
-                has_identifier = True
 
-        # --- 4. DOCUMENTOS ESPECÍFICOS (Matrícula, RG, CNH, Inscrição) ---
+        # 3.3 Regex Fallback
+        fallback_name_pattern = r'\b([A-Z][a-zçáéíóúãõâêô]+(?:\s(?:da|de|do|dos|das|e)\s)?(?:[A-Z][a-zçáéíóúãõâêô]+)+)\b'
+        for match in re.finditer(fallback_name_pattern, text):
+            start, end = match.span()
+            name_text = match.group(1).lower()
+            if set(range(start, end)).intersection(detected_names_ranges): continue
+            if any(b in name_text for b in self.NAME_BLACKLIST): continue
+            parts = name_text.split()
+            if any(p in self.COMMON_SURNAMES for p in parts):
+                if not protected_indices.intersection(range(start, end)):
+                    indices_to_mask.update(range(start, end))
+                    detected_items.append((start, end, 'PERSON_NAME'))
+                    has_identifier = True
+
+        # --- 4. DOCUMENTOS ---
         for doc_type in ['MATRICULA', 'INSCRICAO', 'RG', 'CNH', 'CNPJ', 'CEP']:
             if doc_type in self.regex_patterns:
                 for match in re.finditer(self.regex_patterns[doc_type], text):
-                    # Pega apenas o grupo de captura (números) se existir, senão pega tudo
                     if match.groups():
                         start, end = match.span(1)
                     else:
                         start, end = match.span()
                     
-                    match_range = set(range(start, end))
-                    if not match_range.intersection(indices_to_mask):
-                        indices_to_mask.update(match_range)
-                        pii_stats[doc_type] += 1
-                        if doc_type in ['RG', 'CNH', 'MATRICULA']:
-                            has_identifier = True
+                    if not protected_indices.intersection(range(start, end)):
+                        if not set(range(start, end)).intersection(indices_to_mask):
+                            indices_to_mask.update(range(start, end))
+                            detected_items.append((start, end, doc_type))
+                            if doc_type in ['RG', 'CNH', 'MATRICULA']:
+                                has_identifier = True
 
         # --- 5. ENDEREÇO E EMAIL ---
         for pii_type in ['EMAIL', 'FULL_ADDRESS']:
             for match in re.finditer(self.regex_patterns[pii_type], text):
-                match_range = set(range(match.start(), match.end()))
-                if not match_range.intersection(indices_to_mask):
-                    indices_to_mask.update(match_range)
-                    pii_stats[pii_type] += 1
+                start, end = match.span()
+                content = match.group().lower()
+                if pii_type == 'FULL_ADDRESS':
+                    if any(bad in content for bad in self.ADDRESS_BLACKLIST): continue
+                if not protected_indices.intersection(range(start, end)):
+                    if not set(range(start, end)).intersection(indices_to_mask):
+                        indices_to_mask.update(range(start, end))
+                        detected_items.append((start, end, pii_type))
 
-        # --- 6. TELEFONE (Com validação extra para não pegar CNH/CPF) ---
-        for pattern in self.phone_patterns:
+        # --- 6. TELEFONE ---
+        phone_patterns = [
+            r'\b(?:\(?\s*(?:1[1-9]|2[1-247-8]|3[1-57-8]|4[1-9]|5[13-5]|6[1-9]|7[13-579]|8[1-9]|9[1-9])\s*\)?\s?)?(?:9\s?\d{4}[-.\s]?\d{4}|\d{4}[-.\s]?\d{4})\b',
+            r'(?i)(?:tel|cel|zap|whatsapp|contato|fone)[:\s\.]+\d{8,15}\b'
+        ]
+        
+        for pattern in phone_patterns:
             for match in re.finditer(pattern, text):
-                match_range = set(range(match.start(), match.end()))
+                start, end = match.span()
+                match_range = set(range(start, end))
+                if re.search(r'(?:19|20)\d{2}$', match.group().strip()): continue 
                 
-                # Se já está mascarado (ex: era um processo ou CPF), ignora
-                if match_range.intersection(indices_to_mask):
-                    continue
-                
-                # Validação extra: Se tem 11 dígitos e não tem separador, pode ser CNH/CPF
-                phone_candidate = match.group()
-                digits_only = re.sub(r'\D', '', phone_candidate)
-                if len(digits_only) == 11 and digits_only.startswith(('0', '1', '2', '3', '4', '5', '6', '7', '8', '9')):
-                     # Se parece muito com um CPF/CNH solto (sem DDD claro), ignora se não tiver contexto
-                     # (Neste regex simples, vamos confiar nos padrões)
-                     pass
+                # Check arredores (evita pegar parte de processo)
+                prefix = text[max(0, start-1):start]
+                suffix = text[end:min(len(text), end+1)]
+                if prefix in ['/', '-'] or suffix in ['/', '-']: continue
 
+                if protected_indices.intersection(match_range): continue
+                if match_range.intersection(indices_to_mask): continue
+                
                 indices_to_mask.update(match_range)
-                pii_stats['PHONE'] += 1
+                detected_items.append((start, end, 'PHONE'))
 
-        try:
-            for match in phonenumbers.PhoneNumberMatcher(text, "BR"):
-                if phonenumbers.is_valid_number(match.number):
-                    match_range = set(range(match.start, match.end))
-                    if not match_range.intersection(indices_to_mask):
-                        indices_to_mask.update(match_range)
-                        pii_stats['PHONE'] += 1
-        except Exception:
-            pass
-
-        # --- 7. DADOS SENSÍVEIS (Só se tiver identificador) ---
+        # --- 7. DADOS SENSÍVEIS ---
         for sens_type, keywords in self.sensitive_keywords.items():
             for kw in keywords:
                 for match in re.finditer(kw, text, re.IGNORECASE):
                     if has_identifier:
-                        indices_to_mask.update(range(match.start(), match.end()))
-                        pii_stats[sens_type] += 1
+                        match_range = set(range(match.start(), match.end()))
+                        if not protected_indices.intersection(match_range):
+                            indices_to_mask.update(match_range)
+                            detected_items.append((match.start(), match.end(), sens_type))
+
+        # --- PROCESSAMENTO ESTATÍSTICO (MESCLAGEM) ---
+        # Aqui corrigimos o problema de contar "Área Delta" e "Lt 105" como 2
+        detected_items.sort(key=lambda x: x[0])
+        merged_stats = defaultdict(int)
+        
+        if detected_items:
+            current_start, current_end, current_type = detected_items[0]
+            
+            for i in range(1, len(detected_items)):
+                next_start, next_end, next_type = detected_items[i]
+                
+                # Se forem do mesmo tipo e estiverem perto (ex: endereço quebrado)
+                if next_type == current_type and (next_start - current_end) < 5:
+                    # Mescla
+                    current_end = max(current_end, next_end)
+                else:
+                    # Salva anterior e inicia novo
+                    merged_stats[current_type] += 1
+                    current_start, current_end, current_type = next_start, next_end, next_type
+            
+            merged_stats[current_type] += 1 # Salva o último
 
         redacted_chars = []
         for i, char in enumerate(text):
@@ -365,7 +339,7 @@ class PIIDetector:
             else:
                 redacted_chars.append(char)
         
-        return "".join(redacted_chars), dict(pii_stats), dict(invalid_cpfs)
+        return "".join(redacted_chars), dict(merged_stats), dict(invalid_cpfs)
 
     def get_description(self, key: str) -> str:
         return self.PII_TYPES.get(key, key)
@@ -475,13 +449,12 @@ def generate_report(df: pd.DataFrame, pii_details: dict, records_with_pii: int,
         else:
             critical_records.append(record_id)
 
-    # Consolidação para o Hackathon (Não Públicos = Moderados + Críticos)
     non_public_records = sorted(moderate_records + critical_records, key=lambda x: int(x) if str(x).isdigit() else str(x))
 
     # === CABEÇALHO DO RELATÓRIO ===
     logger.header(f"ANÁLISE DE PEDIDOS - {datetime.now().strftime('%d/%m/%Y %H:%M')}")
     logger.info(f"Arquivo: {os.path.basename(filename)}", indent=0)
-    logger.info(f"Processador: PII Detector v14.0 (Refined)", indent=0)
+    logger.info(f"Processador: PII Detector v20.0 (Platinum Edition)", indent=0)
     
     logger.section("INDICADORES DE PROCESSAMENTO")
     pii_rate = (records_with_pii / total_records * 100) if total_records > 0 else 0
@@ -492,7 +465,7 @@ def generate_report(df: pd.DataFrame, pii_details: dict, records_with_pii: int,
     logger.metric("Tempo de processamento", f"{processing_time:.2f}s")
 
     print(f"\n{'=' * 80}\n")
-    # === 1. RESULTADO PRINCIPAL (HACKATHON FOCUS) ===
+    # === 1. RESULTADO PRINCIPAL ===
     print(f"\n{Logger.BOLD}{Logger.WHITE}RESULTADO PRINCIPAL{Logger.RESET}")
     print(f"{Logger.DIM}{'─' * 80}{Logger.RESET}")
 
@@ -547,7 +520,6 @@ def generate_report(df: pd.DataFrame, pii_details: dict, records_with_pii: int,
         for pii_type, occurrences in sorted_details:
             total_count = sum(item['qtd'] for item in occurrences)
             desc = detector.get_description(pii_type)
-            # Lista de tipos sensíveis/críticos para o badge
             critical_types = ['CPF', 'RG', 'CNH', 'MATRICULA', 'SENSITIVE_HEALTH', 'SENSITIVE_MINOR', 'SENSITIVE_RACE', 'SENSITIVE_GENDER', 'SENSITIVE_SOCIAL']
             is_sensitive = pii_type in critical_types
             
@@ -602,13 +574,10 @@ def main():
     total_invalid_cpfs = 0
     record_risk_analysis = {}
     
-    # Critérios de Risco
-    # Agora com categorias granulares
     critical_categories = {'CPF', 'RG', 'CNH', 'MATRICULA', 
                           'SENSITIVE_HEALTH', 'SENSITIVE_MINOR', 'SENSITIVE_SOCIAL', 
                           'SENSITIVE_RACE', 'SENSITIVE_GENDER'}
     
-    # Inscrição e Processo Legal geralmente não são críticos por si só, mas identificam
     moderate_categories = {'EMAIL', 'PHONE', 'FULL_ADDRESS', 'PERSON_NAME', 'CNPJ', 'INSCRICAO', 'CEP'}
 
     for idx, row in df.iterrows():
