@@ -6,14 +6,6 @@ from collections import defaultdict
 from typing import Tuple, Dict, List
 
 class PIIDetector:
-    """
-    Detector de PII V15.4 (Backend Service)
-    Sincronizado com Script Standalone V15.4
-    - Rollback Lógica de Nomes (V15.2)
-    - Validação ANATEL para Telefones
-    - Expansão de Endereços (SHDF/Lotes)
-    """
-    
     PII_TYPES = {
         'PERSON_NAME': 'Nome de Pessoa',
         'CPF': 'Cadastro de Pessoa Física',

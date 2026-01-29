@@ -1,11 +1,3 @@
-"""
-Processador Standalone de PII - V15.4 (ROLLBACK NOMES)
-Ajustes:
-1. Nomes: Revertido para lógica V15.2 (Exige Nome+Sobrenome ou Gatilho Forte). Assinaturas soltas removidas.
-2. Endereço: Mantida a expansão para SHDF/Rodovias/Lotes (ID 18/59).
-3. Telefone: Mantida validação ANATEL (ID 84).
-4. NIS: Mantida validação estrita (ID 97).
-"""
 import pandas as pd
 import spacy
 import re
@@ -163,12 +155,10 @@ class PIIDetector:
     
     def _is_blocked_by_nis(self, text: str, start: int, end: int) -> bool:
         """Verifica se há NIS/PIS/NIT/PASEP imediatamente antes do número"""
-        # Janela de 10 caracteres antes
         before = text[max(0, start-10):start].upper()
         
         blockers = ['NIS', 'PIS', 'PASEP', 'NIT']
-        
-        # Verifica se algum bloqueador está na janela imediata
+
         for b in blockers:
             if b in before:
                 return True
@@ -193,7 +183,7 @@ class PIIDetector:
         for match in re.finditer(r'\b\d{11}\b', text):
             if any(pos in detected_positions for pos in range(match.start(), match.end())): continue
             
-            # Bloqueio estrito de NIS (só atrás)
+            # Bloqueio estrito de NIS
             if self._is_blocked_by_nis(text, match.start(), match.end()): continue
             
             if self._has_cpf_context(text, match.start()):

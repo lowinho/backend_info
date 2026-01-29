@@ -1,6 +1,3 @@
-"""
-Serviço de persistência MongoDB - Otimizado para LGPD
-"""
 import os
 from pymongo import MongoClient, DESCENDING
 from pymongo.errors import ConnectionFailure, OperationFailure
@@ -130,7 +127,6 @@ class MongoService:
     def get_all_records(self, limit: int = 100, skip: int = 0) -> List[Dict]:
         """Retorna todos os registros do sistema (paginado)"""
         try:
-            # Ordena pelos mais recentes (assumindo que existe processed_at ou similar, senão usa padrão)
             cursor = self.records.find({}, {'_id': 0})\
                 .sort('processed_at', DESCENDING)\
                 .skip(skip)\
@@ -141,5 +137,4 @@ class MongoService:
             return []
 
     def count_all_records(self) -> int:
-        """Conta total de registros no banco inteiro"""
         return self.records.count_documents({})

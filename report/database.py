@@ -7,10 +7,9 @@ load_dotenv()
 
 class MongoService:
     def __init__(self):
-        # CORREÇÃO: Usando os nomes exatos que estão no seu .env
         self.uri = os.getenv("MONGO_URI")
-        self.db_name = os.getenv("DB_NAME")  # Antes era MONGO_DB_NAME
-        self.collection_name = os.getenv("COLLECTION_NAME") # Antes era MONGO_COLLECTION
+        self.db_name = os.getenv("DB_NAME")
+        self.collection_name = os.getenv("COLLECTION_NAME")
         
         # Validação simples para garantir que carregou
         if not self.uri:

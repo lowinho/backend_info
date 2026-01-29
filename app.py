@@ -32,13 +32,6 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 # ============================================
 @app.route('/api/v1/upload', methods=['POST'])
 def upload_file():
-    """
-    Rota de upload atualizada para V10.0
-    Mudanças:
-    - Captura invalid_cpf_count do file_processor
-    - Passa para report_service.create_report()
-    - Mantém compatibilidade total com frontend
-    """
     try:
         if 'file' not in request.files:
             return jsonify({'error': 'Nenhum arquivo enviado'}), 400
@@ -66,7 +59,7 @@ def upload_file():
         else:
             return jsonify({'error': 'Formato não suportado'}), 400
 
-        # === GERAÇÃO DE RELATÓRIO (ATUALIZADO V10.0) ===
+        # === GERAÇÃO DE RELATÓRIO ===
         report_data = report_service.create_report(
             process_uuid=process_uuid,
             filename=filename,
@@ -75,7 +68,7 @@ def upload_file():
             pii_statistics=result['pii_stats'],
             processing_time=result['processing_time'],
             invalid_cpf_count=result.get('invalid_cpf_count', 0),
-            records_with_pii_count=result.get('records_with_pii_count', 0) # <--- PASSANDO O VALOR CORRETO
+            records_with_pii_count=result.get('records_with_pii_count', 0)
         )
         
         # Garantir timestamp (compatibilidade)

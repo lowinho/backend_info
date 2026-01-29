@@ -2,10 +2,6 @@ from datetime import datetime
 from typing import Dict
 
 class ReportService:
-    """
-    Report Service V15.4
-    """
-    
     @staticmethod
     def create_report(
         process_uuid: str,
